@@ -16,6 +16,7 @@ import warnings
 import getpass
 import sys
 
+import pydoc
 from botocore.compat import six
 from six import print_
 from six.moves import input
@@ -23,7 +24,7 @@ import logging
 
 from ..core import globals
 from ..objects.exceptions import ValidationError
-from ..resources.strings import prompts
+from ..resources.strings import prompts, strings
 
 LOG = logging.getLogger(__name__)
 
@@ -33,8 +34,10 @@ def echo_and_justify(justify, *args):
     print_(s.rstrip())
 
 
-def echo(*args):
-    print_(*_convert_to_strings(args), sep=' ')
+def echo(*args, **kwargs):
+    if 'sep' not in kwargs:
+        kwargs['sep'] = ' '
+    print_(*_convert_to_strings(args), **kwargs)
 
 
 def _convert_to_strings(list_of_things):
@@ -89,6 +92,11 @@ def get_input(output, default=None):
     if not result:
         result = default
     return result
+
+
+def echo_with_pager(output):
+    # pydoc.pager handles pipes and everything
+    pydoc.pager(output)
 
 
 def prompt(output, default=None):
@@ -213,3 +221,65 @@ def update_upload_progress(progress):
         "#"*block + "-"*(barLength-block), progress, status)
     sys.stdout.write(text)
     sys.stdout.flush()
+
+
+def get_boolean_response(text=None):
+    if text:
+        string = text + ' (y/n)'
+    else:
+        string = '(y/n)'
+    response = get_input(string, default='y').lower()
+    while response not in ('y', 'n', 'yes', 'no'):
+        echo(strings['prompt.invalid'],
+                             strings['prompt.yes-or-no'])
+        response = prompt('y/n', default='y').lower()
+
+    if response in ('y', 'yes'):
+        return True
+    else:
+        return False
+
+
+def get_event_streamer():
+    if sys.stdout.isatty():
+        return EventStreamer()
+    else:
+        return PipeStreamer()
+
+
+class EventStreamer(object):
+    def __init__(self):
+        self.prompt = strings['events.streamprompt']
+        self.eventcount = 0
+
+    def stream_event(self, message):
+        """
+        Streams an event so a prompt is displayed at the bottom of the stream
+        :param message: message to be streamed
+        """
+        length = len(self.prompt)
+        echo('\r', message.ljust(length), sep='')
+        echo(self.prompt, end='')
+        sys.stdout.flush()
+        self.eventcount += 1
+
+    def end_stream(self):
+        """
+         Removes the self.prompt from the screen
+        """
+        if self.eventcount < 1:
+            return  # Nothing to clean up
+        length = len(self.prompt) + 3  # Cover up "^C" character as well
+        print_('\r'.ljust(length))
+
+
+class PipeStreamer(EventStreamer):
+    """ Really just a wrapper for EventStreamer
+    We dont want to actually do any "streaming" if
+    a pipe is being used, so we will just use standard printing
+    """
+    def stream_event(self, message):
+        echo(message)
+
+    def end_stream(self):
+        return

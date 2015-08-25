@@ -2,10 +2,16 @@
 Changelog
 =========
 
-------------------
-3.1.4 (2015-03-24)
-------------------
-- Add support for Multi-container Docker platform
+----------------
+3.2 (2015-03-30)
+----------------
+- Added "platform" commands
+- Added "upgrade" command
+- Added "abort" command
+- Added "labs" commands
+- Printed events now look nicer
+- Logs and events are automatically paged.
+- Health based rolling updates are now default for new environments.
 
 ------------------
 3.1.3 (2015-03-13)

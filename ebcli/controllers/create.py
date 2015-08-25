@@ -19,10 +19,10 @@ from ..resources.strings import strings, prompts, flag_text
 from ..lib import elasticbeanstalk, utils
 from ..objects.exceptions import NotFoundError, AlreadyExistsError, \
     InvalidOptionsError
-from ..core import io, fileoperations, operations
+from ..core import io, fileoperations
 from ..objects.tier import Tier
 from ..objects.requests import CreateEnvironmentRequest
-from ..commands import saved_configs
+from ..operations import saved_configs, commonops, createops
 
 
 class CreateController(AbstractBaseController):
@@ -121,7 +121,6 @@ class CreateController(AbstractBaseController):
             raise InvalidOptionsError(strings['create.singleandsize'])
 
         app_name = self.get_app_name()
-        region = self.get_region()
 
         # get tags
         tags = get_and_validate_tags(tags)
@@ -133,8 +132,7 @@ class CreateController(AbstractBaseController):
         # Test out sstack and tier before we ask any questions (Fast Fail)
         if solution_string:
             try:
-                solution = operations.get_solution_stack(solution_string,
-                                                         region)
+                solution = commonops.get_solution_stack(solution_string)
             except NotFoundError:
                 raise NotFoundError('Solution stack ' + solution_string +
                                     ' does not appear to be valid')
@@ -149,7 +147,7 @@ class CreateController(AbstractBaseController):
                                     'appear to be valid')
 
         if cname:
-            if not operations.is_cname_available(cname, region):
+            if not commonops.is_cname_available(cname):
                 raise AlreadyExistsError(strings['cname.unavailable'].
                                          replace('{cname}', cname))
 
@@ -157,26 +155,26 @@ class CreateController(AbstractBaseController):
         if not env_name:
             # default is app-name plus '-dev'
             default_name = app_name + '-dev'
-            current_environments = operations.get_all_env_names(region)
+            current_environments = commonops.get_all_env_names()
             unique_name = utils.get_unique_name(default_name,
                                                 current_environments)
             env_name = io.prompt_for_environment_name(unique_name)
 
         if not solution_string:
-            solution = operations.prompt_for_solution_stack(region)
+            solution = commonops.prompt_for_solution_stack()
 
         # Get template if applicable
-        template_name = get_template_name(app_name, cfg, region)
+        template_name = get_template_name(app_name, cfg)
         if template_name:
             template_contents = elasticbeanstalk.describe_template(
-                app_name, template_name, region=region, platform=solution.name)
+                app_name, template_name, platform=solution.name)
 
             if template_contents['Tier']['Name'] == 'Worker':
                 tier = Tier.parse_tier('worker')
 
         if not tier or tier.name.lower() == 'webserver':
             if not cname and not provided_env_name:
-                cname = get_cname(env_name, region)
+                cname = get_cname(env_name)
             elif not cname:
                 cname = None
 
@@ -208,13 +206,12 @@ class CreateController(AbstractBaseController):
             vpc=vpc)
 
         env_request.option_settings += envvars
-        operations.make_new_env(env_request, region,
+        createops.make_new_env(env_request,
                                 branch_default=branch_default, nohang=nohang,
                                 interactive=flag,
                                 timeout=timeout)
 
     def complete_command(self, commands):
-        region = fileoperations.get_default_region()
         app_name = fileoperations.get_application_name()
 
         self.complete_region(commands)
@@ -225,9 +222,9 @@ class CreateController(AbstractBaseController):
         if cmd in ['-t', '--tier']:
             io.echo(*Tier.get_all_tiers())
         if cmd in ['-s', '--solution']:
-            io.echo(*elasticbeanstalk.get_available_solution_stacks(region))
+            io.echo(*elasticbeanstalk.get_available_solution_stacks())
         if cmd in ['-vl', '--versionlabel']:
-            io.echo(*operations.get_app_version_labels(app_name, region))
+            io.echo(*commonops.get_app_version_labels(app_name))
 
     def form_database_object(self):
         create_db = self.app.pargs.database
@@ -239,7 +236,8 @@ class CreateController(AbstractBaseController):
         version = self.app.pargs.db_version
 
         # Do we want a database?
-        if create_db or username or password or engine or size or instance:
+        if create_db or username or password or engine or size \
+                or instance or version:
             db_object = dict()
             if not username:
                 io.echo()
@@ -274,7 +272,7 @@ class CreateController(AbstractBaseController):
             if not vpc_id:
                 vpc_id = io.get_input(prompts['vpc.id'])
             if not publicip:
-                publicip = operations.get_boolean_response(
+                publicip = io.get_boolean_response(
                     text=prompts['vpc.publicip'])
             if not ec2subnets:
                 ec2subnets = io.get_input(prompts['vpc.ec2subnets'])
@@ -283,7 +281,7 @@ class CreateController(AbstractBaseController):
             if not securitygroups:
                 securitygroups = io.get_input(prompts['vpc.securitygroups'])
             if not elbpublic:
-                publicip = operations.get_boolean_response(
+                publicip = io.get_boolean_response(
                     text=prompts['vpc.elbpublic'])
             if not dbsubnets and database:
                 dbsubnets = io.get_input(prompts['vpc.dbsubnets'])
@@ -303,13 +301,13 @@ class CreateController(AbstractBaseController):
             return {}
 
 
-def get_cname(env_name, region):
+def get_cname(env_name):
     while True:
         cname = io.prompt_for_cname(default=env_name)
         if not cname:
             # Reverting to default
             break
-        if not operations.is_cname_available(cname, region):
+        if not commonops.is_cname_available(cname):
             io.echo('That cname is not available. '
                     'Please choose another.')
         else:
@@ -347,15 +345,15 @@ def get_and_validate_envars(envvars):
     envvars = envvars.strip().strip('"').strip('\'')
     envvars = envvars.split(',')
 
-    options, options_to_remove = operations.create_envvars_list(envvars)
+    options, options_to_remove = commonops.create_envvars_list(envvars)
     return options
 
 
-def get_template_name(app_name, cfg, region):
+def get_template_name(app_name, cfg):
     if not cfg:
         # See if a default template exists
         if saved_configs.resolve_config_location('default') is None:
             return None
         else:
             cfg = 'default'
-    return saved_configs.resolve_config_name(app_name, cfg, region)
+    return saved_configs.resolve_config_name(app_name, cfg)

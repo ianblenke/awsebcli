@@ -17,17 +17,18 @@ import sys
 
 # Add vendor directory to module search path
 # Need this for botocore
-
-parent_folder = os.path.dirname(__file__)
-parent_dir = os.path.abspath(parent_folder)
-while not parent_folder.endswith('ebcli'):
-    # Keep going up until we get to the right folder
-    parent_folder = os.path.dirname(parent_folder)
+def fix_path():
+    parent_folder = os.path.dirname(__file__)
     parent_dir = os.path.abspath(parent_folder)
+    while not parent_folder.endswith('ebcli'):
+        # Keep going up until we get to the right folder
+        parent_folder = os.path.dirname(parent_folder)
+        parent_dir = os.path.abspath(parent_folder)
 
-vendor_dir = os.path.join(parent_dir, 'bundled')
+    vendor_dir = os.path.join(parent_dir, 'bundled')
 
-sys.path.insert(0, vendor_dir)
+    sys.path.insert(0, vendor_dir)
+fix_path()
 
 import logging
 from argparse import SUPPRESS
@@ -37,10 +38,11 @@ from cement.utils.misc import init_defaults
 from cement.core.exc import CaughtSignal
 import botocore
 from botocore.compat import six
-from six import iteritems
+iteritems = six.iteritems
 
 from . import globals, base, io, hooks
 from ..controllers.initialize import InitController
+from ..controllers.abort import AbortController
 from ..controllers.create import CreateController
 from ..controllers.events import EventsController
 from ..controllers.logs import LogsController
@@ -58,9 +60,12 @@ from ..controllers.list import ListController
 from ..controllers.printenv import PrintEnvController
 from ..controllers.clone import CloneController
 from ..controllers.swap import SwapController
+from ..controllers.platform import PlatformController
+from ..controllers.upgrade import UpgradeController
 from ..core.completer import CompleterController
 from ..objects.exceptions import *
 from ..resources.strings import strings, flag_text
+from ..labs.controller import LabsController
 
 
 class EB(foundation.CementApp):
@@ -90,7 +95,11 @@ class EB(foundation.CementApp):
             UseController,
             SetEnvController,
             ListController,
+            PlatformController,
             CloneController,
+            UpgradeController,
+            AbortController,
+            LabsController,
         ]
 
         # register all controllers
@@ -110,6 +119,8 @@ class EB(foundation.CementApp):
         self.add_arg('--endpoint-url', help=SUPPRESS)
         self.add_arg('--no-verify-ssl',
                      action='store_true', help=flag_text['base.noverify'])
+        self.add_arg('--debugboto',  # show debug info for botocore
+                     action='store_true', help=SUPPRESS)
 
         globals.app = self
 

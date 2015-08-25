@@ -13,10 +13,11 @@
 
 from ..core.abstractcontroller import AbstractBaseController
 from ..resources.strings import strings, flag_text
-from ..core import operations, fileoperations
+from ..core import fileoperations
 from ..objects.exceptions import NoEnvironmentForBranchError, \
     InvalidOptionsError
 from ..core import io
+from ..operations import commonops, deployops
 
 
 class DeployController(AbstractBaseController):
@@ -38,7 +39,6 @@ class DeployController(AbstractBaseController):
 
     def do_command(self):
         app_name = self.get_app_name()
-        region = self.get_region()
         env_name = self.app.pargs.environment_name
         version = self.app.pargs.version
         label = self.app.pargs.label
@@ -50,7 +50,7 @@ class DeployController(AbstractBaseController):
 
         if not env_name:
             env_name = \
-                operations.get_current_branch_environment()
+                commonops.get_current_branch_environment()
 
         if not env_name:
             message = strings['branch.noenv'].replace('eb {cmd}',
@@ -63,8 +63,8 @@ class DeployController(AbstractBaseController):
         #     # deploy to every environment listed
         #     ## Right now you can only list one
 
-        operations.deploy(app_name, env_name, region, version, label, message,
-                          timeout=timeout)
+        deployops.deploy(app_name, env_name, version, label, message,
+                         timeout=timeout)
 
     def complete_command(self, commands):
         #ToDo, edit this if we ever support multiple env deploys
@@ -73,6 +73,5 @@ class DeployController(AbstractBaseController):
         ## versionlabels on --version
         cmd = commands[-1]
         if cmd in ['--version']:
-            region = fileoperations.get_default_region()
             app_name = fileoperations.get_application_name()
-            io.echo(*operations.get_app_version_labels(app_name, region))
+            io.echo(*commonops.get_app_version_labels(app_name))

@@ -13,7 +13,7 @@
 
 from ..core.abstractcontroller import AbstractBaseController
 from ..resources.strings import strings, flag_text
-from ..core import operations
+from ..operations import eventsops
 
 
 class EventsController(AbstractBaseController):
@@ -28,8 +28,7 @@ class EventsController(AbstractBaseController):
 
     def do_command(self):
         app_name = self.get_app_name()
-        region = self.get_region()
         env_name = self.get_env_name()
         follow = self.app.pargs.follow
 
-        operations.print_events(app_name, env_name, region, follow)
+        eventsops.print_events(app_name, env_name, follow)

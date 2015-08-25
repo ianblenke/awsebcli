@@ -33,10 +33,20 @@ strings = {
     'clone.info': 'Clones an environment.',
     'clone.epilog': 'This command clones your environment and attempts to upgrade the platform to the latest version.\n'
                     'To create a clone with the same platform version, use the "--exact" option.',
+    'abort.info': 'Cancels an environment update or deployment.',
     'logs.info': 'Gets recent logs.',
     'use.info': 'Sets default environment.',
     'logs.epilog': 'This command displays the last 100 lines of logs. To retrieve all logs, use the "--all" option.',
     'deploy.info': 'Deploys your source code to the environment.',
+    'platform.info': 'Manages platforms.',
+    'platformshow.info': 'Shows information about current platform.',
+    'platformlist.info': 'Lists available platforms.',
+    'platformselect.info': 'Selects a default platform.',
+    'platformselect.epilog': 'This command is an alternative to "eb init -i" and "eb init -p". It does not change the platform on any existing environments.\n'
+                             'To upgrade an environment\'s platform, type:\n'
+                             '    eb upgrade',
+    'platformlist.epilog': 'Shows a list of platforms for use with "eb init -p". Type "--verbose" to get the full platform name.',
+    'upgrade.info': 'Updates the environment to the most recent platform version.',
     'scale.info': 'Changes the number of running instances.',
     'status.info': 'Gets environment information and status.',
     'setenv.info': 'Sets environment variables.',
@@ -122,6 +132,15 @@ strings = {
     'sc.unstagedchanges': 'You have uncommitted changes.',
     'sc.gitnotinstalled': 'Your project is using git, but git doesn\'t appear to be installed.\n'
                           'Have you added git to your PATH?',
+    'events.streamprompt': ' -- Events -- (safe to Ctrl+C)',
+    'events.abortmessage': ' Use "eb abort" to cancel the command.',
+    'abort.noabortableenvs': 'There are no environments currently being updated.',
+    'labs.info': 'Extra experimental commands.',
+    'quicklink.info': 'Generate a quick-launch link for your project.',
+    'quicklink.epilog': 'Applications and environments created from the quick link are accessible to your account only. \n'
+                        'To share the link with other accounts, you must explicitly grant those accounts read access to your S3 application version .zip file.',
+    'download.info': 'Download Application Version',
+    'convert-dockkerrun.info': 'Converts Dockerrun.aws.json from version 1 to version 2',
 }
 
 prompts = {
@@ -137,6 +156,7 @@ prompts = {
     'cname.unavailable': 'The CNAME you provided is already in use.\n',
     'terminate.confirm': 'The environment "{env-name}" and all associated instances will be terminated.',
     'terminate.validate': 'To confirm, type the environment name',
+    'upgrade.validate': 'To continue, type the environment name',
     'delete.confirm': 'The application "{app-name}" and all its resources will be deleted.\n'
                       'This application currently has the following:\n'
                       'Running environments: {env-num}\n'
@@ -168,14 +188,23 @@ prompts = {
     'vpc.dbsubnets': 'Enter a comma-separated list of database subnets',
     'logs.retrieving': 'Retrieving logs...',
     'swap.envprompt': 'Select the environment with which you want to swap CNAMEs.',
+    'abort.envprompt': 'Select the environment you want to stop updating.',
     'clone.latest': 'There is a newer version of the platform used by the environment you are cloning.\n'
                     'Select the version of the platform that you want to use for the clone.',
     'clone.latestwarn': 'Launching environment clone on most recent platform version. Override this behavior by using the "--exact" option.',
-    'create.dockerrunupgrade': 'The Multi-container Docker platform does not support the version number of the Dockerrun.aws.json file that you provided.'
+    'upgrade.altmessage': 'You can also change your platform version by typing "eb clone" and then "eb swap".',
+    'upgrade.singleinstance': 'This operation causes application downtime while Elastic Beanstalk replaces the instance.',
+    'upgrade.norollingapply': 'Elastic Beanstalk will enable {0}-based rolling updates to avoid application downtime while it replaces your instances. You may cancel the upgrade after it has started by typing "eb abort". To upgrade without rolling updates, type "eb upgrade --noroll".',
+    'upgrade.norollingforce': 'This operation causes application downtime while Elastic Beanstalk replaces your instances.',
+    'upgrade.rollingupdate': 'This operation replaces your instances with minimal or zero downtime. You may cancel the upgrade after it has started by typing "eb abort".',
+    'upgrade.infodialog': 'The environment "{0}" will be updated to use the most recent platform version.',
+    'upgrade.alreadylatest': 'Environment already on most recent platform version.',
+    'upgrade.applyrolling': 'Enabling {0}-based rolling updates to environment.',
+    'create.dockerrunupgrade': 'Multicontainer Docker environments do not support the version number of the Dockerrun.aws.json file that you provided. Type "eb labs convert-dockerrun" to convert it to a newer format.'
 }
 
 alerts = {
-    'platform.old': 'There is a newer version of the platform used by your environment. You can create an environment on the most recent platform version by typing "eb clone".'
+    'platform.old': 'There is a newer version of the platform used by your environment. You can upgrade your environment to the most recent platform version by typing "eb upgrade".'
 }
 
 flag_text = {
@@ -263,6 +292,9 @@ flag_text = {
     'terminate.all': 'terminate everything',
     'terminate.nohang': 'return immediately, do not wait for terminate to be completed',
 
+    # Upgrade
+    'upgrade.noroll': 'do not enable rolling updates before upgrade',
+
     # use
     'use.env': 'environment name',
 
@@ -296,6 +328,7 @@ responses = {
     'logs.pulled': 'Pulled logs for environment instances.',
     'logs.successtail': 'Successfully finished tailing',
     'logs.successbundle': 'Successfully finished bundling',
+    'logs.fail': 'Failed to pull logs for environment instances.',
     'env.terminated': 'terminateEnvironment completed successfully.',
     'env.invalidstate': 'Environment named {env-name} is in an invalid state for this operation. Must be Ready.',
     'loadbalancer.notfound': 'There is no ACTIVE Load Balancer named',

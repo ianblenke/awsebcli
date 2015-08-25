@@ -12,14 +12,17 @@
 # language governing permissions and limitations under the License.
 
 import textwrap
+import json
 
 from cement.core import controller
 
 from ebcli import __version__
-from ..core import io, fileoperations, operations
+from ..lib import utils
+from ..core import io, fileoperations
 from ..objects.exceptions import NoEnvironmentForBranchError
 from ..resources.strings import strings, flag_text
 from ..objects import region
+from ..operations import commonops
 
 
 class AbstractBaseController(controller.CementBaseController):
@@ -57,7 +60,7 @@ class AbstractBaseController(controller.CementBaseController):
     def check_for_cli_update(self, version):
         label = self.Meta.label
         if label in ('create', 'deploy', 'status', 'clone', 'config'):
-            if operations.cli_update_exists(version):
+            if cli_update_exists(version):
                 io.log_alert('An update to this CLI is available.')
 
     def get_app_name(self):
@@ -71,7 +74,7 @@ class AbstractBaseController(controller.CementBaseController):
             env_name = self.app.pargs.environment_name
         if not env_name:
             # If env name not provided, grab branch default
-            env_name = operations. \
+            env_name = commonops. \
                 get_current_branch_environment()
 
         if not env_name:
@@ -90,19 +93,12 @@ class AbstractBaseController(controller.CementBaseController):
 
         return env_name
 
-    def get_region(self):
-        region = self.app.pargs.region
-        if not region:
-            region = fileoperations.get_default_region()
-        return region
-
     def complete_command(self, commands):
         if not self.complete_region(commands):
             if len(commands) == 1:  # They only have the main command so far
                 # lets complete for positional args
-                region = fileoperations.get_default_region()
                 app_name = fileoperations.get_application_name()
-                io.echo(*operations.get_env_names(app_name, region))
+                io.echo(*commonops.get_env_names(app_name))
 
     def complete_region(self, commands):
         # we only care about top command
@@ -146,7 +142,7 @@ class AbstractBaseController(controller.CementBaseController):
                     cmd_txt += "%s (alias: %s)\n" % \
                                (first, ', '.join(cmd['aliases']))
                 else:
-                    cmd_txt += "%s" % cmd['alias'][0]
+                    cmd_txt += "%s" % cmd['aliases'][0]
             elif len(cmd['aliases']) > 0:
                 cmd_txt += "%s (alias: %s)\n" % (label, ', '.join(cmd['aliases']))
             else:
@@ -171,3 +167,15 @@ commands:
             txt = self._meta.description
 
         return textwrap.dedent(txt)
+
+
+def cli_update_exists(current_version):
+    try:
+        data = utils.get_data_from_url(
+            'https://pypi.python.org/pypi/awsebcli/json', timeout=5)
+        data = json.loads(data)
+        latest = data['info']['version']
+        return latest != current_version
+    except:
+        # Ignore all exceptions. We want to fail silently.
+        return False

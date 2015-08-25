@@ -13,7 +13,7 @@
 
 from ..core.abstractcontroller import AbstractBaseController
 from ..resources.strings import strings
-from ..core import fileoperations, operations, io
+from ..operations import openops
 
 
 class OpenController(AbstractBaseController):
@@ -24,7 +24,6 @@ class OpenController(AbstractBaseController):
 
     def do_command(self):
         app_name = self.get_app_name()
-        region = self.get_region()
         env_name = self.get_env_name()
 
-        operations.open_app(app_name, env_name, region)
+        openops.open_app(app_name, env_name)
