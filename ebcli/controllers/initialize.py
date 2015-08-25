@@ -41,6 +41,7 @@ class InitController(AbstractBaseController):
         # get arguments
         self.interactive = self.app.pargs.interactive
         self.region = self.app.pargs.region
+        self.noverify = self.app.pargs.no_verify_ssl
         self.flag = False
         if self.app.pargs.platform:
             self.flag = True
@@ -57,6 +58,9 @@ class InitController(AbstractBaseController):
 
         self.solution = self.get_solution_stack()
         self.app_name = self.get_app_name()
+        if self.noverify:
+            fileoperations.write_config_setting('global',
+                                                'no-verify-ssl', True)
 
         if not default_env and not self.interactive:
             # try to get default env from config file if exists
@@ -84,13 +88,14 @@ class InitController(AbstractBaseController):
 
         operations.setup(self.app_name, self.region, self.solution)
 
-        self.keyname = self.get_keyname(default=key)
+        if 'IIS' not in self.solution:
+            self.keyname = self.get_keyname(default=key)
 
-        if self.keyname == -1:
-            self.keyname = None
+            if self.keyname == -1:
+                self.keyname = None
 
-        fileoperations.write_config_setting('global', 'default_ec2_keyname',
-                                            self.keyname)
+            fileoperations.write_config_setting('global', 'default_ec2_keyname',
+                                                self.keyname)
 
     def check_credentials(self, profile):
         given_profile = self.app.pargs.profile

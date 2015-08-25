@@ -21,12 +21,15 @@ from ..objects.exceptions import NotFoundError, AlreadyExistsError, \
     InvalidOptionsError
 from ..core import io, fileoperations, operations
 from ..objects.tier import Tier
+from ..objects.requests import CreateEnvironmentRequest
+from ..commands import saved_configs
 
 
 class CreateController(AbstractBaseController):
     class Meta:
         label = 'create'
         description = strings['create.info']
+        epilog = strings['create.epilog']
         arguments = [
             (['environment_name'], dict(
                 action='store', nargs='?', default=None,
@@ -49,7 +52,10 @@ class CreateController(AbstractBaseController):
             (['--scale'], dict(type=int, help=flag_text['create.scale'])),
             (['-nh', '--nohang'], dict(
                 action='store_true', help=flag_text['create.nohang'])),
+            (['--timeout'], dict(type=int, help=flag_text['general.timeout'])),
             (['--tags'], dict(help=flag_text['create.tags'])),
+            (['--envvars'], dict(help=flag_text['create.envvars'])),
+            (['--cfg'], dict(help=flag_text['create.config'])),
             (['-db', '--database'], dict(
                 action="store_true", help=flag_text['create.database'])),
             ## Add addition hidden db commands
@@ -63,6 +69,8 @@ class CreateController(AbstractBaseController):
                 dict(type=int, dest='db_size', help=argparse.SUPPRESS)),
             (['-db.engine', '--database.engine'],
                 dict(dest='db_engine', help=argparse.SUPPRESS)),
+            (['--vpc'], dict(action='store_true',
+                             help=flag_text['create.vpc'])),
             (['--vpc.id'], dict(dest='vpc_id', help=argparse.SUPPRESS)),
             (['--vpc.ec2subnets'], dict(
                 dest='vpc_ec2subnets', help=argparse.SUPPRESS)),
@@ -96,9 +104,11 @@ class CreateController(AbstractBaseController):
         sample = self.app.pargs.sample
         nohang = self.app.pargs.nohang
         tags = self.app.pargs.tags
+        envvars = self.app.pargs.envvars
         scale = self.app.pargs.scale
+        timeout = self.app.pargs.timeout
+        cfg = self.app.pargs.cfg
         flag = False if env_name else True
-
 
         provided_env_name = env_name is not None
 
@@ -122,7 +132,7 @@ class CreateController(AbstractBaseController):
         if solution_string:
             try:
                 solution = operations.get_solution_stack(solution_string,
-                                                               region)
+                                                         region)
             except NotFoundError:
                 raise NotFoundError('Solution stack ' + solution_string +
                                     ' does not appear to be valid')
@@ -168,12 +178,32 @@ class CreateController(AbstractBaseController):
 
         database = self.form_database_object()
         vpc = self.form_vpc_object()
+        envvars = get_and_validate_envars(envvars)
+        template_name = get_template_name(app_name, cfg, region)
 
+        env_request = CreateEnvironmentRequest(
+            app_name=app_name,
+            env_name=env_name,
+            cname=cname,
+            template_name=template_name,
+            platform=solution,
+            tier=tier,
+            instance_type=itype,
+            version_label=label,
+            instance_profile=iprofile,
+            single_instance=single,
+            key_name=key_name,
+            sample_application=sample,
+            tags=tags,
+            scale=scale,
+            database=database,
+            vpc=vpc)
 
-        operations.make_new_env(app_name, env_name, region, cname, solution,
-                                tier, itype, label, iprofile, single, key_name,
-                                branch_default, sample, tags, scale,
-                                database, vpc, nohang, interactive=flag)
+        env_request.option_settings += envvars
+        operations.make_new_env(env_request, region,
+                                branch_default=branch_default, nohang=nohang,
+                                interactive=flag,
+                                timeout=timeout)
 
     def complete_command(self, commands):
         region = fileoperations.get_default_region()
@@ -215,9 +245,10 @@ class CreateController(AbstractBaseController):
             db_object['instance'] = instance
             return db_object
         else:
-            return False
+            return {}
 
     def form_vpc_object(self):
+        vpc = self.app.pargs.vpc
         vpc_id = self.app.pargs.vpc_id
         ec2subnets = self.app.pargs.vpc_ec2subnets
         elbsubnets = self.app.pargs.vpc_elbsubnets
@@ -225,8 +256,29 @@ class CreateController(AbstractBaseController):
         publicip = self.app.pargs.vpc_publicip
         securitygroups = self.app.pargs.vpc_securitygroups
         dbsubnets = self.app.pargs.vpc_dbsubnets
+        database = self.app.pargs.database
 
-        if vpc_id:
+        if vpc:
+            # Interactively ask for vpc settings
+            io.echo()
+            if not vpc_id:
+                vpc_id = io.get_input(prompts['vpc.id'])
+            if not publicip:
+                publicip = operations.get_boolean_response(
+                    text=prompts['vpc.publicip'])
+            if not ec2subnets:
+                ec2subnets = io.get_input(prompts['vpc.ec2subnets'])
+            if not elbsubnets:
+                elbsubnets = io.get_input(prompts['vpc.elbsubnets'])
+            if not securitygroups:
+                securitygroups = io.get_input(prompts['vpc.securitygroups'])
+            if not elbpublic:
+                publicip = operations.get_boolean_response(
+                    text=prompts['vpc.elbpublic'])
+            if not dbsubnets and database:
+                dbsubnets = io.get_input(prompts['vpc.dbsubnets'])
+
+        if vpc_id or vpc:
             vpc_object = dict()
             vpc_object['id'] = vpc_id
             vpc_object['ec2subnets'] = ec2subnets
@@ -238,8 +290,7 @@ class CreateController(AbstractBaseController):
             return vpc_object
 
         else:
-            return False
-
+            return {}
 
 
 def get_cname(env_name, region):
@@ -250,7 +301,7 @@ def get_cname(env_name, region):
             break
         if not operations.is_cname_available(cname, region):
             io.echo('That cname is not available. '
-                    'Please choose another')
+                    'Please choose another.')
         else:
             break
     return cname
@@ -267,7 +318,7 @@ def get_and_validate_tags(tags):
         raise InvalidOptionsError(strings['tags.max'])
     for t in tags:
         # validate
-        if not re.match('^[\w.:/+@-]+=[\w.:/+@-]+$', t):
+        if not re.match('^[\w\s.:/+%@-]{1,128}=[\w\s.:/+%@-]{0,256}$', t):
             raise InvalidOptionsError(strings['tags.invalidformat'])
         else:
             # build tag
@@ -277,3 +328,24 @@ def get_and_validate_tags(tags):
                  'Value': value}
             )
     return tag_list
+
+
+def get_and_validate_envars(envvars):
+    if not envvars:
+        return []
+
+    envvars = envvars.strip().strip('"').strip('\'')
+    envvars = envvars.split(',')
+
+    options, options_to_remove = operations.create_envvars_list(envvars)
+    return options
+
+
+def get_template_name(app_name, cfg, region):
+    if not cfg:
+        # See if a default template exists
+        if saved_configs.resolve_config_location('default') is None:
+            return None
+        else:
+            cfg = 'default'
+    return saved_configs.resolve_config_name(app_name, cfg, region)

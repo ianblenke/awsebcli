@@ -12,14 +12,34 @@
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
 
+import os
+import sys
+
+# Add vendor directory to module search path
+# Need this for botocore
+
+parent_folder = os.path.dirname(__file__)
+parent_dir = os.path.abspath(parent_folder)
+while not parent_folder.endswith('ebcli'):
+    # Keep going up until we get to the right folder
+    parent_folder = os.path.dirname(parent_folder)
+    parent_dir = os.path.abspath(parent_folder)
+
+vendor_dir = os.path.join(parent_dir, 'bundled')
+
+sys.path.insert(0, vendor_dir)
+
 import logging
 from argparse import SUPPRESS
 
-from cement.core import foundation, handler
+from cement.core import foundation, handler, hook
 from cement.utils.misc import init_defaults
 from cement.core.exc import CaughtSignal
+import botocore
+from botocore.compat import six
 from six import iteritems
 
+from . import globals, base, io, hooks
 from ..controllers.initialize import InitController
 from ..controllers.create import CreateController
 from ..controllers.events import EventsController
@@ -37,8 +57,8 @@ from ..controllers.setenv import SetEnvController
 from ..controllers.list import ListController
 from ..controllers.printenv import PrintEnvController
 from ..controllers.clone import CloneController
+from ..controllers.swap import SwapController
 from ..core.completer import CompleterController
-from ..core import globals, base, io
 from ..objects.exceptions import *
 from ..resources.strings import strings, flag_text
 
@@ -52,24 +72,32 @@ class EB(foundation.CementApp):
         config_defaults = defaults
 
     def setup(self):
+        controllers = [
+            InitController,
+            CreateController,
+            EventsController,
+            LogsController,
+            PrintEnvController,
+            DeployController,
+            StatusController,
+            TerminateController,
+            ConfigController,
+            SwapController,
+            OpenController,
+            ConsoleController,
+            ScaleController,
+            SSHController,
+            UseController,
+            SetEnvController,
+            ListController,
+            CloneController,
+        ]
+
         # register all controllers
-        handler.register(InitController)
-        handler.register(CreateController)
-        handler.register(EventsController)
-        handler.register(LogsController)
-        handler.register(DeployController)
-        handler.register(StatusController)
-        handler.register(TerminateController)
-        handler.register(ConfigController)
-        handler.register(OpenController)
-        handler.register(ConsoleController)
-        handler.register(ScaleController)
-        handler.register(SSHController)
-        handler.register(UseController)
-        handler.register(SetEnvController)
-        handler.register(PrintEnvController)
-        handler.register(ListController)
-        handler.register(CloneController)
+        for c in controllers:
+            c._add_to_handler(handler)
+
+        #Add special controllers
         handler.register(CompleterController)
 
         super(EB, self).setup()
@@ -80,6 +108,8 @@ class EB(foundation.CementApp):
         self.add_arg('--profile', help=flag_text['base.profile'])
         self.add_arg('-r', '--region', help=flag_text['base.region'])
         self.add_arg('--endpoint-url', help=SUPPRESS)
+        self.add_arg('--no-verify-ssl',
+                     action='store_true', help=flag_text['base.noverify'])
 
         globals.app = self
 
@@ -93,6 +123,7 @@ def main():
     #######
 
     app = EB()
+    hook.register('post_argument_parsing', hooks.pre_run_hook)
 
     try:
         app.setup()
@@ -131,7 +162,7 @@ def main():
             io.log_error(message)
         app.close(code=4)
     except Exception as e:
-        #Generic catch all
+        # Generic catch all
         if app.pargs.debug:
             raise
 

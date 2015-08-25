@@ -12,11 +12,13 @@
 # language governing permissions and limitations under the License.
 
 from ..core.abstractcontroller import AbstractBaseController
-from ..resources.strings import strings, flag_text
+from ..resources.strings import strings, flag_text, prompts
 from ..core import operations, io
 from ..lib import utils, elasticbeanstalk
-from ..controllers.create import get_cname, get_and_validate_tags
+from ..controllers.create import get_cname, get_and_validate_tags, \
+    get_and_validate_envars
 from ..objects.exceptions import InvalidOptionsError, AlreadyExistsError
+from ..objects.requests import CloneEnvironmentRequest
 
 
 class CloneController(AbstractBaseController):
@@ -30,8 +32,12 @@ class CloneController(AbstractBaseController):
             (['-c', '--cname'], dict(help=flag_text['clone.cname'])),
             (['--scale'], dict(type=int, help=flag_text['clone.scale'])),
             (['--tags'], dict(help=flag_text['clone.tags'])),
+            (['--envvars'], dict(help=flag_text['create.envvars'])),
             (['-nh', '--nohang'], dict(action='store_true',
                                        help=flag_text['clone.nohang'])),
+            (['--timeout'], dict(type=int, help=flag_text['general.timeout'])),
+            (['--exact'], dict(action='store_true',
+                                help=flag_text['clone.exact'])),
         ]
         usage = 'eb clone <environment_name> (-n CLONE_NAME) [options ...]'
 
@@ -44,10 +50,16 @@ class CloneController(AbstractBaseController):
         scale = self.app.pargs.scale
         nohang = self.app.pargs.nohang
         tags = self.app.pargs.tags
+        envvars = self.app.pargs.envvars
+        exact = self.app.pargs.exact
+        timeout = self.app.pargs.timeout
         provided_clone_name = clone_name is not None
+        platform = None
+
+        # Get original environment
+        env = elasticbeanstalk.get_environment(app_name, env_name, region)
 
         # Get tier of original environment
-        env = elasticbeanstalk.get_environment(app_name, env_name, region)
         tier = env.tier
         if 'worker' in tier.name.lower() and cname:
             raise InvalidOptionsError(strings['worker.cname'])
@@ -59,6 +71,7 @@ class CloneController(AbstractBaseController):
 
         # get tags
         tags = get_and_validate_tags(tags)
+        envvars = get_and_validate_envars(envvars)
 
         # Get env_name for clone
         if not clone_name:
@@ -82,9 +95,41 @@ class CloneController(AbstractBaseController):
             elif not cname:
                 cname = None
 
+        if not exact:
+            if not provided_clone_name:  # interactive mode
+                latest = operations.get_latest_solution_stack(
+                    env.platform.version, region=region)
+                if latest != env.platform:
+                    # ask for latest or exact
+                    io.echo()
+                    io.echo(prompts['clone.latest'])
+                    lst = ['Latest  (' + str(latest) + ')',
+                           'Same    (' + str(env.platform) + ')']
+                    result = utils.prompt_for_item_in_list(lst)
+                    if result == lst[0]:
+                        platform = latest
+            else:
+                # assume latest - get original platform
+                platform = operations.get_latest_solution_stack(
+                    env.platform.version, region=region)
+                if platform != env.platform:
+                    io.log_warning(prompts['clone.latestwarn'])
 
-        operations.make_cloned_env(app_name, env_name, clone_name, cname,
-                             scale, tags, region, nohang)
+
+        clone_request = CloneEnvironmentRequest(
+            app_name=app_name,
+            env_name=clone_name,
+            original_name=env_name,
+            cname=cname,
+            platform=platform,
+            scale=scale,
+            tags=tags,
+        )
+
+        clone_request.option_settings += envvars
+
+        operations.make_cloned_env(clone_request, region, nohang=nohang,
+                                   timeout=timeout)
 
     def complete_command(self, commands):
         super(CloneController, self).complete_command(commands)

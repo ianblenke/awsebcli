@@ -115,11 +115,21 @@ class NotSupportedError(EBCLIException):
     """  Operation not supported   """
     pass
 
+
 class InvalidProfileError(EBCLIException):
     """ Given profile is invalid  """
     pass
 
+
 class ValidationError(EBCLIException):
     pass
 
+
+class FileTooLargeError(EBCLIException):
+    pass
+
+
+class UploadError(EBCLIException):
+    """ An error occured while uploading app version
+    """
 

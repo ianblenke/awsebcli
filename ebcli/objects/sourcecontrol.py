@@ -20,7 +20,7 @@ import sys
 from cement.utils.misc import minimal_logger
 from cement.utils.shell import exec_cmd
 
-from ..resources.strings import git_ignore
+from ..resources.strings import git_ignore, strings
 from ..core.fileoperations import get_config_setting
 from ..objects.exceptions import NoSourceControlError, CommandError, \
     NotInitializedError
@@ -48,6 +48,9 @@ class SourceControl():
         pass
 
     def get_version_label(self):
+        pass
+
+    def untracked_changes_exist(self):
         pass
 
     @staticmethod
@@ -93,11 +96,13 @@ class NoSC(SourceControl):
         pass
 
     def set_up_ignore_file(self):
-        LOG.debug('No Source control installed')
-        raise NoSourceControlError
+        Git().set_up_ignore_file()
 
     def clean_up_ignore_file(self):
         pass
+
+    def untracked_changes_exist(self):
+        return False
 
 
 class Git(SourceControl):
@@ -133,27 +138,53 @@ class Git(SourceControl):
         #Replace dots with underscores
         return stdout[:-1].replace('.', '_')
 
+    def untracked_changes_exist(self):
+        stdout, stderr, exitcode = \
+            exec_cmd(['git', 'diff', '--numstat'])
+
+        if sys.version_info[0] >= 3:
+            stdout = stdout.decode('utf8')
+            stderr = stderr.decode('utf8')
+        stdout = stdout.strip()
+        LOG.debug('git diff --numstat result: ' + stdout +
+                  ' with errors: ' + stderr)
+        if stdout:
+            return True
+        return False
+
     def get_current_branch(self):
         stdout, stderr, exitcode = \
-            exec_cmd(['git', 'rev-parse', '--abbrev-ref', 'HEAD'])
+            exec_cmd(['git', 'symbolic-ref', '--short', '-q', 'HEAD'])
 
         if sys.version_info[0] >= 3:
             stdout = stdout.decode('utf8')
             stderr = stderr.decode('utf8')
         stdout = stdout.rstrip()
+        if exitcode == 1 and not stderr:
+            io.log_warning('Git is in a detached head state. Using branch "default".')
+            return 'default'
+
         self._handle_exitcode(exitcode, stderr)
         LOG.debug('git current-branch result: ' + stdout)
         return stdout
 
     def do_zip(self, location):
-        io.log_info('creating zip using git archive HEAD')
-        stdout, stderr, exitcode = \
-            exec_cmd(['git', 'archive', '-v', '--format=zip',
-                      '-o', location, 'HEAD'])
-        if sys.version_info[0] >= 3:
-            stderr = stderr.decode('utf8')
-        self._handle_exitcode(exitcode, stderr)
-        io.log_info('git archive output: ' + stderr)
+        cwd = os.getcwd()
+        try:
+            # must be in project root for git archive to work.
+            fileoperations._traverse_to_project_root()
+
+            io.log_info('creating zip using git archive HEAD')
+            stdout, stderr, exitcode = \
+                exec_cmd(['git', 'archive', '-v', '--format=zip',
+                          '-o', location, 'HEAD'])
+            if sys.version_info[0] >= 3:
+                stderr = stderr.decode('utf8')
+            self._handle_exitcode(exitcode, stderr)
+            io.log_info('git archive output: ' + stderr)
+
+        finally:
+            os.chdir(cwd)
 
     def get_message(self):
         stdout, stderr, exitcode = \
@@ -165,7 +196,14 @@ class Git(SourceControl):
         return stdout.rstrip().split(' ', 1)[1]
 
     def is_setup(self):
-        return fileoperations.is_git_directory_present()
+        if fileoperations.is_git_directory_present():
+            # We know that the directory has git, but
+            # is git on the path?
+            if not fileoperations.program_is_installed('git'):
+                raise CommandError(strings['sc.gitnotinstalled'])
+            else:
+                return True
+        return False
 
     def set_up_ignore_file(self):
         if not os.path.exists('.gitignore'):

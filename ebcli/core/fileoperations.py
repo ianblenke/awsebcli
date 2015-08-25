@@ -20,12 +20,14 @@ import stat
 import codecs
 
 from yaml import load, dump, safe_dump
+from yaml.parser import ParserError
 from yaml.scanner import ScannerError
 try:
     import configparser
 except ImportError:
     import ConfigParser as configparser
 
+from botocore.compat import six
 from six import StringIO
 from cement.utils.misc import minimal_logger
 
@@ -172,6 +174,11 @@ _marker = object()
 
 
 def set_user_only_permissions(location):
+    """
+    Sets permissions so that only a user can read/write (chmod 400).
+    Can be a folder or a file.
+    :param location: Full location of either a folder or a location
+    """
     if os.path.isdir(location):
 
         for root, dirs, files in os.walk(location):
@@ -186,6 +193,9 @@ def set_user_only_permissions(location):
 
 
 def _set_user_only_permissions_file(location, ex=False):
+    """
+    :param ex: Boolean: add executable permission
+    """
     permission = stat.S_IRUSR | stat.S_IWUSR
     if ex:
         permission |= stat.S_IXUSR
@@ -366,9 +376,13 @@ def _zipdir(path, zipf):
             if root not in zipped_roots:
                 zipf.write(root)
                 zipped_roots.append(root)
-            file = os.path.join(root, f)
-            io.log_info('  +adding: ' + str(file))
-            zipf.write(file)
+            cur_file = os.path.join(root, f)
+            if cur_file.endswith('~'):
+                # Ignore editor backup files (like file.txt~)
+                io.log_info('  -skipping: ' + str(cur_file))
+            else:
+                io.log_info('  +adding: ' + str(cur_file))
+                zipf.write(cur_file)
 
 
 def unzip_folder(file_location, directory):
@@ -435,8 +449,11 @@ def save_env_file(env):
     try:
         _traverse_to_project_root()
 
+        file_name = os.path.abspath(file_name)
+
         with codecs.open(file_name, 'w', encoding='utf8') as f:
-            f.write(safe_dump(env, default_flow_style=False))
+            f.write(safe_dump(env, default_flow_style=False,
+                              line_break=os.linesep))
 
     finally:
         os.chdir(cwd)
@@ -455,9 +472,9 @@ def get_environment_from_file(env_name):
         if os.path.exists(path):
             with codecs.open(path, 'r', encoding='utf8') as f:
                 env = load(f)
-    except ScannerError:
+    except (ScannerError, ParserError):
         raise InvalidSyntaxError('The environment file contains '
-                                 'invalid syntax')
+                                 'invalid syntax.')
 
     finally:
         os.chdir(cwd)
@@ -476,13 +493,14 @@ def write_config_setting(section, key_name, value):
         config.setdefault(section, {})[key_name] = value
 
         with codecs.open(local_config_file, 'w', encoding='utf8') as f:
-            f.write(dump(config, default_flow_style=False))
+            f.write(safe_dump(config, default_flow_style=False,
+                              line_break=os.linesep))
 
     finally:
         os.chdir(cwd)  # go back to working directory
 
 
-def get_config_setting(section, key_name):
+def get_config_setting(section, key_name, default=_marker):
     # get setting from global if it exists
     cwd = os.getcwd()  # save working directory
     try:
@@ -503,6 +521,13 @@ def get_config_setting(section, key_name):
         except KeyError:
             pass  # Revert to global value
 
+        if value is None and default != _marker:
+            return default
+    except NotInitializedError:
+        if default == _marker:
+            raise
+        else:
+            return default
     finally:
         os.chdir(cwd)  # move back to working directory
     return value
@@ -514,3 +539,69 @@ def _get_yaml_dict(filename):
             return load(f)
     except IOError:
         return {}
+
+
+def file_exists(full_path):
+    return os.path.isfile(full_path)
+
+
+def eb_file_exists(location):
+    cwd = os.getcwd()
+    try:
+        _traverse_to_project_root()
+        path = beanstalk_directory + location
+        return os.path.isfile(path)
+    finally:
+        os.chdir(cwd)
+
+
+def make_eb_dir(location):
+    cwd = os.getcwd()
+    try:
+        _traverse_to_project_root()
+        path = beanstalk_directory + location
+        if not os.path.isdir(path):
+            os.makedirs(path)
+    finally:
+        os.chdir(cwd)
+
+
+def write_to_eb_data_file(location, data):
+    cwd = os.getcwd()
+    try:
+        _traverse_to_project_root()
+        path = beanstalk_directory + location
+        write_to_data_file(path, data)
+    finally:
+        os.chdir(cwd)
+
+
+def read_from_eb_data_file(location):
+    cwd = os.getcwd()
+    try:
+        _traverse_to_project_root()
+        path = beanstalk_directory + location
+        read_from_data_file(path)
+    finally:
+        os.chdir(cwd)
+
+
+def write_to_data_file(location, data):
+    with codecs.open(location, 'wb', encoding=None) as f:
+        f.write(data)
+
+
+def read_from_data_file(location):
+    with codecs.open(location, 'rb', encoding=None) as f:
+        return f.read()
+
+
+def get_eb_file_full_location(location):
+    cwd = os.getcwd()
+    try:
+        _traverse_to_project_root()
+        path = beanstalk_directory + location
+        full_path = os.path.abspath(path)
+        return full_path
+    finally:
+        os.chdir(cwd)

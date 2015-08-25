@@ -24,15 +24,18 @@ strings = {
     'init.info': 'Initializes your directory with the EB CLI. Creates the application.',
     'init.epilog': 'This command is safe when run in a previously initialized'
                    ' directory. To re-initialize with different options, '
-                   'use the -i flag.',
+                   'use the -i option.',
     'create.info': 'Creates a new environment.',
+    'create.epilog': 'Type "--vpc." or "--database." for more VPC and database options.',
     'events.info': 'Gets recent events.',
     'open.info': 'Opens the application URL in a browser.',
     'console.info': 'Opens the environment in the AWS Elastic Beanstalk Management Console.',
     'clone.info': 'Clones an environment.',
+    'clone.epilog': 'This command clones your environment and attempts to upgrade the platform to the latest version.\n'
+                    'To create a clone with the same platform version, use the "--exact" option.',
     'logs.info': 'Gets recent logs.',
     'use.info': 'Sets default environment.',
-    'logs.epilog': 'This command displays the last 100 lines of logs. To retrieve all logs, use the "--all" flag.',
+    'logs.epilog': 'This command displays the last 100 lines of logs. To retrieve all logs, use the "--all" option.',
     'deploy.info': 'Deploys your source code to the environment.',
     'scale.info': 'Changes the number of running instances.',
     'status.info': 'Gets environment information and status.',
@@ -43,19 +46,25 @@ strings = {
                      'You can also remove environment variables by specifying no value. For example:\n'
                      '  eb setenv HeapSize= Site_Url=\n'
                      'This removes the environment variables.',
+    'swap.info': 'Swaps two environment CNAMEs with each other.',
+    'config.epilog': 'Use this command to work with environment configuration settings. \n'
+                     'To update your environment directly in an interactive editor, type:\n'
+                     '  eb config\n',
+    'config.notfound': 'Elastic Beanstalk could not find any saved configuration with the name "{config-name}".',
     'list.info': 'Lists all environments.',
     'terminate.info': 'Terminates the environment.',
-    'terminate.epilog': 'This command terminates the environment. To terminate the application and everything in it, use the "--all" flag.',
-    'config.info': 'Edits the environment configuration settings.',
+    'terminate.epilog': 'This command terminates the environment. To terminate the application and everything in it, use the "--all" option.',
+    'config.info': 'Edits the environment configuration settings or manages saved configurations.',
     'ssh.info': 'Opens the SSH client to connect to an instance.',
     'printenv.info': 'Shows the environment variables.',
 
     # Error when --sample and --label falg are both used on create
-    'create.sampleandlabel': 'You cannot use the "--sample" and "--version" flags together.',
-    'create.singleandsize': 'You cannot use the "--single" and "--size" flags together.',
-    'logs.allandzip': 'You cannot use the "--all" and "--all_zip" flags together.',
-    'logs.allandinstance': 'You cannot use the "--all" and "--instance" flags together.',
-    'ssh.instanceandnumber': 'You cannot use the "--instance" and "--number" flags together.',
+    'create.sampleandlabel': 'You cannot use the "--sample" and "--version" options together.',
+    'create.singleandsize': 'You cannot use the "--single" and "--scale" options together.',
+    'appversion.create': 'Creating application version archive "{version}".',
+    'logs.allandzip': 'You cannot use the "--all" and "--all_zip" options together.',
+    'logs.allandinstance': 'You cannot use the "--all" and "--instance" options together.',
+    'ssh.instanceandnumber': 'You cannot use the "--instance" and "--number" options together.',
     # Text shown if 'eb terminate' is called while no environment is selected as default
     'terminate.noenv': 'To delete the application and all application versions, type "eb terminate --all".',
 
@@ -69,16 +78,19 @@ strings = {
     'env.description': 'Environment created from the EB CLI using "eb create"',
     # Same as above but for cloned environments
     'env.clonedescription': 'Environment cloned from {env-name} from the EB CLI using "eb clone"',
+    # Default template description
+    'template.description': 'Configuration created from the EB CLI using "eb config save".',
     'env.exists': 'An environment with that name already exists.',
     # When create is called, if we cant find any files, we say this
     'appversion.none': 'The current directory does not contain any source code. Elastic Beanstalk is launching the sample application instead.',
     # Error, no solution stacks returned. Almost always due to permissions
     'sstacks.notfound': 'Elastic Beanstalk could not find any platforms. Ensure you have the necessary permissions to access Elastic Beanstalk.',
+    'sstacks.notaversion': 'Elastic Beanstalk could not find any supported platforms for the given version {version}.',
     'timeout.error': 'The operation timed out. The state of the environment is unknown.',
     'sc.notfound': 'Git is not set up for this project. EB CLI will deploy a .zip file of the entire directory.',
     'exit.notsetup': 'This directory has not been set up with the EB CLI\n'
                      'You must first run "eb init".',
-    'exit.noregion': 'The EB CLI cannot find a default region. Run "eb init" or add the region using the "--region" flag.',
+    'exit.noregion': 'The EB CLI cannot find a default region. Run "eb init" or use a specific region by including the "--region" option with the command.',
     # Typical response when an environment is in pending state
     'exit.invalidstate': 'The operation cannot be completed at this time due to a pending operation. Try again later.',
     'branch.noenv': 'This branch does not have a default environment. You must either specify an environment by typing ' 
@@ -91,9 +103,9 @@ strings = {
                             'cannot contain any spaces or =. They must start'
                             ' with a letter, number or one of the following symbols: \\ _ . : / + - @',
     'tags.invalidformat': 'You must provide a comma-separated list using the format name=value to set tags. '
-                          'Tags may only contain letters, numbers, and the following symbols: / _ . : + - @',
+                          'Tags may only contain letters, numbers, and the following symbols: / _ . : + % - @',
     'tags.max': 'Elastic Beanstalk supports a maximum of 7 tags.',
-    'deploy.invalidoptions': 'You cannot use the "--version" flag with either the "--message" or "--label" flag.',
+    'deploy.invalidoptions': 'You cannot use the "--version" option with either the "--message" or "--label" option.',
     'init.getvarsfromoldeb': 'You previous used an earlier version of eb. Getting options from .elasticbeanstalk/config.\n'
                              'Credentials will now be stored in ~/.aws/config',
     'ssh.noip': 'This instance does not have a Public IP address. This is possibly because the instance is terminating.',
@@ -105,7 +117,11 @@ strings = {
     'ssh.portopen': 'INFO: SSH port 22 open.',
     'ssh.closeport': 'INFO: Closed port 22 on ec2 instance security group.',
     'ssh.uploaded': 'Uploaded SSH public key for "{keyname}" into EC2 for region {region}.',
+    'swap.unsupported': 'You must have at least 2 running environments to swap CNAMEs.',
     'connection.error': 'Having trouble communicating with AWS. Please ensure the provided region is correct and you have a working internet connection.',
+    'sc.unstagedchanges': 'You have uncommitted changes.',
+    'sc.gitnotinstalled': 'Your project is using git, but git doesn\'t appear to be installed.\n'
+                          'Have you added git to your PATH?',
 }
 
 prompts = {
@@ -141,8 +157,24 @@ prompts = {
     'terminate.nomatch': 'Names do not match. Exiting.',
     'ssh.nokey': 'This environment is not set up for SSH. Use "eb ssh --setup" to set up SSH for the environment.',
     'ssh.setupwarn': 'You are about to setup SSH for environment "{env-name}". If you continue, your existing instances will have to be **terminated** and new instances will be created. The environment will be temporarily unavailable.',
-    'rds.username': 'Enter an RDS DB username (default is "admin")',
+    'rds.username': 'Enter an RDS DB username (default is "ebroot")',
     'rds.password': 'Enter an RDS DB master password',
+    'vpc.id': 'Enter the VPC ID',
+    'vpc.publicip': 'Do you want to associate a public IP address?',
+    'vpc.ec2subnets': 'Enter a comma-separated list of Amazon EC2 subnets',
+    'vpc.elbsubnets': 'Enter a comma-separated list of Amazon ELB subnets',
+    'vpc.securitygroups': 'Enter a comma-separated list of Amazon VPC security groups',
+    'vpc.elbpublic': 'Do you want the load balencer to be public? (Select no for internal)',
+    'vpc.dbsubnets': 'Enter a comma-separated list of database subnets',
+    'logs.retrieving': 'Retrieving logs...',
+    'swap.envprompt': 'Select the environment with which you want to swap CNAMEs.',
+    'clone.latest': 'There is a newer version of the platform used by the environment you are cloning.\n'
+                    'Select the version of the platform that you want to use for the clone.',
+    'clone.latestwarn': 'Launching environment clone on most recent platform version. Override this behavior by using the "--exact" option.',
+}
+
+alerts = {
+    'platform.old': 'There is a newer version of the platform used by your environment. You can create an environment on the most recent platform version by typing "eb clone".'
 }
 
 flag_text = {
@@ -152,6 +184,8 @@ flag_text = {
     'base.verbose': 'toggle verbose output',
     'base.profile': 'use a specific profile from your credential file',
     'base.region': 'use a specific region',
+    'general.timeout': 'timeout period in minutes',
+    'base.noverify': 'do not verify AWS SSL certificates',
 
     # Clone
     'clone.env': 'name of environment to clone',
@@ -160,6 +194,7 @@ flag_text = {
     'clone.scale': 'number of desired instances',
     'clone.tags': 'a comma separated list of tags as key=value pairs',
     'clone.nohang': 'return immediately, do not wait for clone to be completed',
+    'clone.exact': 'match the platform version of the original environment',
 
     # Config
     'config.nohang': 'return immediately, do not wait for config to be completed',
@@ -179,13 +214,17 @@ flag_text = {
     'create.scale': 'number of desired instances',
     'create.nohang': 'return immediately, do not wait for create to be completed',
     'create.tags': 'a comma separated list of tags as key=value pairs',
+    'create.envvars': 'a comma-separated list of environment variables as key=value pairs',
     'create.database': 'create a database',
+    'create.vpc': 'create environment inside a VPC',
+    'create.config': 'saved configuration name',
 
     # Deploy
     'deploy.env': 'environment name',
     'deploy.version': 'existing version label to deploy',
     'deploy.label': 'label name which version will be given',
     'deploy.message': 'description for version',
+    'deploy.nohang': 'return immediately, do not wait for deploy to be completed',
 
     # Events
     'events.follow': 'wait and continue to print events as they come',
@@ -225,10 +264,14 @@ flag_text = {
 
     # use
     'use.env': 'environment name',
+
+    # swap
+    'swap.env': 'name of source environment',
+    'swap.name': 'name of destination environment',
 }
 
 
-### The below are programatic and are not intended to be edited unless the service response changes
+### The below are programmatic and are not intended to be edited unless the service response changes
 responses = {
     'event.redmessage': 'Environment health has been set to RED',
     'event.redtoyellowmessage': 'Environment health has transitioned '
@@ -238,10 +281,12 @@ responses = {
     'event.launchsuccess': 'Successfully launched environment:',
     'event.launchbad': 'Create environment operation is CompleterController, '
                        'but with errors',
+    'event.failedlaunch': 'Failed to launch environment.',
     'event.updatebad': 'Update environment operation is complete, but with errors.',
     'git.norepository': 'Error: Not a git repository '
                         '(or any of the parent directories): .git',
     'env.updatesuccess': 'Environment update completed successfully.',
+    'env.configsuccess': 'Successfully deployed new configuration to environment.',
     'env.cnamenotavailable': 'DNS name \([^ ]+\) is not available.',
     'env.nameexists': 'Environment [^ ]+ already exists.',
     'app.deletesuccess': 'The application has been deleted successfully.',
@@ -254,7 +299,9 @@ responses = {
     'env.invalidstate': 'Environment named {env-name} is in an invalid state for this operation. Must be Ready.',
     'loadbalancer.notfound': 'There is no ACTIVE Load Balancer named',
     'ec2.sshalreadyopen': 'the specified rule "peer: 0.0.0.0/0, TCP, from port: 22, to port: 22,',
-
+    'swap.success': 'Completed swapping CNAMEs for environments',
+    'cfg.nameexists': 'Configuration Template {name} already exists.',
+    'create.noplatform': 'Unable to determine base for template pack (no solution stack)',
 }
 git_ignore = [
     '# Elastic Beanstalk Files',        # comment line

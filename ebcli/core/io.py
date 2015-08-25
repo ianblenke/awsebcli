@@ -16,7 +16,7 @@ import warnings
 import getpass
 import sys
 
-import six
+from botocore.compat import six
 from six import print_
 from six.moves import input
 import logging
@@ -57,6 +57,10 @@ def _convert_to_strings(list_of_things):
         else:
             LOG.error('echo called with an unsupported data type')
             LOG.debug('data class = ' + data.__class__.__name__)
+
+
+def log_alert(message):
+    echo('Alert:', message)
 
 
 def log_info(message):
@@ -182,3 +186,32 @@ def prompt_for_cname(default=None):
                  'start or end with a hyphen')
 
     return cname
+
+
+def update_upload_progress(progress):
+    """
+    Displays or updates a console progress bar
+    :param progress: Accepts a float between 0 and 1.
+        Any int will be converted to a float.
+        A value under 0 represents a 'halt'.
+        A value at 1 or bigger represents 100%
+    """
+    barLength = 50  # Modify this to change the length of the progress bar
+    status = ""
+    if isinstance(progress, int):
+        progress = float(progress)
+    if not isinstance(progress, float):
+        progress = 0
+        status = "error: progress var must be float\r\n"
+    if progress < 0:
+        progress = 0
+        status = "Halt...\r\n"
+    if progress >= 1:
+        progress = 1
+        status = "Done...\r\n"
+    block = int(round(barLength*progress))
+    progress = int(round(progress * 100))
+    text = "\rUploading: [{0}] {1}% {2}".format(
+        "#"*block + "-"*(barLength-block), progress, status)
+    sys.stdout.write(text)
+    sys.stdout.flush()

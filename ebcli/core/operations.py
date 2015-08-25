@@ -16,7 +16,9 @@ import time
 import re
 import os
 import subprocess
+import json
 
+from botocore.compat import six
 from six.moves import urllib
 from six import iteritems
 from cement.utils.misc import minimal_logger
@@ -25,8 +27,7 @@ from cement.utils.shell import exec_cmd, exec_cmd2
 from ..lib import elasticbeanstalk, s3, iam, aws, ec2, elb
 from ..core import fileoperations, io
 from ..objects.sourcecontrol import SourceControl
-from ..resources.strings import strings, responses, prompts
-from ..objects import region as regions
+from ..resources.strings import strings, responses, prompts, alerts
 from ..lib import utils
 from ..objects import configuration
 from ..objects.exceptions import *
@@ -39,12 +40,16 @@ LOG = minimal_logger(__name__)
 DEFAULT_ROLE_NAME = 'aws-elasticbeanstalk-ec2-role'
 
 
-def wait_and_print_events(request_id, region,
-                          timeout_in_seconds=60*10, sleep_time=5):
-    start = datetime.now()
-    timediff = timedelta(seconds=timeout_in_seconds)
+def wait_for_success_events(request_id, region, timeout_in_minutes=None,
+                            sleep_time=5, stream_events=True):
+    if timeout_in_minutes == 0:
+        return
+    if timeout_in_minutes is None:
+        timeout_in_minutes = 10
 
-    finished = False
+    start = datetime.now()
+    timediff = timedelta(seconds=timeout_in_minutes * 60)
+
     last_time = None
 
     #Get first events
@@ -61,12 +66,12 @@ def wait_and_print_events(request_id, region,
 
             log_event(event)
             # Test event message for success string
-            finished = _is_success_string(event.message)
+            _is_success_string(event.message)
             last_time = event.event_date
         else:
             time.sleep(sleep_time)
 
-    while not finished and (datetime.now() - start) < timediff:
+    while (datetime.now() - start) < timediff:
         time.sleep(sleep_time)
 
         events = elasticbeanstalk.get_new_events(
@@ -74,17 +79,18 @@ def wait_and_print_events(request_id, region,
         )
 
         for event in reversed(events):
-            log_event(event)
+            if stream_events:
+                log_event(event)
+                # We dont need to update last_time if we are not printing.
+                # This can solve timing issues
+                last_time = event.event_date
 
             # Test event message for success string
-            finished = _is_success_string(event.message)
-            last_time = event.event_date
+            if _is_success_string(event.message):
+                return
 
-            if finished:
-                break
-
-    if not finished:
-        raise TimeoutError('Timed out while waiting for command to Complete')
+    # We have timed out
+    raise TimeoutError('Timed out while waiting for command to Complete')
 
 
 def _is_success_string(message):
@@ -98,17 +104,23 @@ def _is_success_string(message):
         raise ServiceError(message)
     if message.startswith(responses['event.updatebad']):
         raise ServiceError(message)
+    if message == responses['event.failedlaunch']:
+        raise ServiceError(message)
     if message == responses['logs.pulled']:
         return True
     if message == responses['env.terminated']:
         return True
     if message == responses['env.updatesuccess']:
         return True
+    if message == responses['env.configsuccess']:
+        return True
     if message == responses['app.deletesuccess']:
         return True
     if responses['logs.successtail'] in message:
         return True
     if responses['logs.successbundle'] in message:
+        return True
+    if message.startswith(responses['swap.success']):
         return True
 
     return False
@@ -247,8 +259,19 @@ def prompt_for_solution_stack(region):
     else:
         version = versions[0]
 
+    return get_latest_solution_stack(version, stack_list=solution_stacks)
+
+
+def get_latest_solution_stack(platform_version, region=None, stack_list=None):
+    if stack_list:
+        solution_stacks = stack_list
+    else:
+        solution_stacks = elasticbeanstalk.\
+            get_available_solution_stacks(region=region)
+
     #filter
-    solution_stacks = [x for x in solution_stacks if x.version == version]
+    solution_stacks = [x for x in solution_stacks
+                       if x.version == platform_version]
 
     #Lastly choose a server type
     servers = []
@@ -258,13 +281,16 @@ def prompt_for_solution_stack(region):
 
     # Default to latest version of server
     # We are assuming latest is always first in list.
+    if len(servers) < 1:
+        raise NotFoundError(strings['sstacks.notaversion'].
+                            replace('{version}', platform_version))
     server = servers[0]
 
     #filter
     solution_stacks = [x for x in solution_stacks if x.server == server]
 
     #should have 1 and only have 1 result
-    assert len(solution_stacks) == 1, 'Filtered Solution Stack list '\
+    assert len(solution_stacks) == 1, 'Filtered Solution Stack list ' \
                                       'contains multiple results'
     return solution_stacks[0]
 
@@ -289,11 +315,7 @@ def setup(app_name, region, solution):
         war_file = fileoperations.get_war_file_location()
         fileoperations.write_config_setting('deploy', 'artifact', war_file)
 
-    try:
-        setup_ignore_file()
-    except NoSourceControlError:
-        # io.log_warning(strings['sc.notfound'])
-        pass
+    setup_ignore_file()
 
 
 def setup_credentials(access_id=None, secret_key=None):
@@ -468,7 +490,7 @@ def get_application_names(region):
     return [n.name for n in app_list]
 
 
-def scale(app_name, env_name, number, confirm, region):
+def scale(app_name, env_name, number, confirm, region, timeout=None):
     options = []
     # get environment
     env = elasticbeanstalk.describe_configuration_settings(
@@ -506,33 +528,33 @@ def scale(app_name, env_name, number, confirm, region):
         )
     request_id = elasticbeanstalk.update_environment(env_name, options, region)
     try:
-        wait_and_print_events(request_id, region, timeout_in_seconds=60*5)
+        wait_for_success_events(request_id, region,
+                                timeout_in_minutes=timeout or 5)
     except TimeoutError:
         io.log_error(strings['timeout.error'])
 
 
-def make_new_env(app_name, env_name, region, cname, solution_stack, tier,
-                 itype, label, profile, single, key_name, branch_default,
-                 sample, tags, size, database, vpc, nohang, interactive=True):
-    if profile is None:
+def make_new_env(env_request, region, branch_default=False,
+                 nohang=False, interactive=True, timeout=None):
+    if env_request.instance_profile is None and \
+                env_request.template_name is None:
         # Service supports no profile, however it is not good/recommended
         # Get the eb default profile
-        profile = get_default_profile(region)
+        env_request.instance_profile = get_default_profile(region)
 
     # deploy code
-    if not sample and not label:
+    if not env_request.sample_application and not env_request.version_label:
         io.log_info('Creating new application version using project code')
-        label = create_app_version(app_name, region)
+        env_request.version_label = \
+            create_app_version(env_request.app_name, region)
 
     # Create env
-    if key_name:
-        upload_keypair_if_needed(region, key_name)
+    if env_request.key_name:
+        upload_keypair_if_needed(region, env_request.key_name)
 
     io.log_info('Creating new environment')
-    result, request_id = create_env(app_name, env_name, region, cname,
-                                    solution_stack, tier, itype, label, single,
-                                    key_name, profile, tags, size, database,
-                                    vpc, interactive=interactive)
+    result, request_id = create_env(env_request, region,
+                                    interactive=interactive)
 
     env_name = result.name  # get the (possibly) updated name
 
@@ -551,7 +573,7 @@ def make_new_env(app_name, env_name, region, cname, solution_stack, tier,
 
     io.echo('Printing Status:')
     try:
-        wait_and_print_events(request_id, region)
+        wait_for_success_events(request_id, region, timeout_in_minutes=timeout)
     except TimeoutError:
         io.log_error(strings['timeout.error'])
 
@@ -575,23 +597,29 @@ def print_env_details(env, region, health=True):
         io.echo('  Health:', env.health)
 
 
-def create_env(app_name, env_name, region, cname, solution_stack, tier, itype,
-               label, single, key_name, profile, tags, size, database, vpc,
-               interactive=True):
-    description = strings['env.description']
+def create_env(env_request, region, interactive=True):
+    # If a template is being used, we want to try using just the template
+    if env_request.template_name:
+        platform = env_request.platform
+        env_request.platform = None
+    else:
+        platform = None
     while True:
         try:
-            return elasticbeanstalk.create_environment(
-                app_name, env_name, cname, description, solution_stack,
-                tier, itype, label, single, key_name, profile, tags,
-                region=region, database=database, vpc=vpc, size=size)
+            return elasticbeanstalk.create_environment(env_request,
+                                                       region=region)
 
         except InvalidParameterValueError as e:
             if e.message == responses['app.notexists'].replace(
-                '{app-name}', '\'' + app_name + '\''):
+                    '{app-name}', '\'' + env_request.app_name + '\''):
                 # App doesnt exist, must be a new region.
                 ## Lets create the app in the region
-                create_app(app_name, region)
+                create_app(env_request.app_name, region)
+            elif e.message == responses['create.noplatform']:
+                if platform:
+                    env_request.platform = platform
+                else:
+                    raise
             elif interactive:
                 LOG.debug('creating env returned error: ' + e.message)
                 if re.match(responses['env.cnamenotavailable'], e.message):
@@ -600,15 +628,15 @@ def create_env(app_name, env_name, region, cname, solution_stack, tier, itype,
                 elif re.match(responses['env.nameexists'], e.message):
                     io.echo(strings['env.exists'])
                     current_environments = get_all_env_names(region)
-                    unique_name = utils.get_unique_name(env_name,
+                    unique_name = utils.get_unique_name(env_request.env_name,
                                                         current_environments)
-                    env_name = io.prompt_for_environment_name(
+                    env_request.env_name = io.prompt_for_environment_name(
                         default_name=unique_name)
                 elif e.message == responses['app.notexists'].replace(
-                        '{app-name}', '\'' + app_name + '\''):
+                        '{app-name}', '\'' + env_request.app_name + '\''):
                     # App doesnt exist, must be a new region.
                     ## Lets create the app in the region
-                    create_app(app_name, region)
+                    create_app(env_request.app_name, region)
                 else:
                     raise
             else:
@@ -617,14 +645,13 @@ def create_env(app_name, env_name, region, cname, solution_stack, tier, itype,
         # Try again with new values
 
 
-def make_cloned_env(app_name, env_name, clone_name, cname, scale, tags, region,
-                    nohang):
+def make_cloned_env(clone_request, region, nohang=False, timeout=None):
     io.log_info('Cloning environment')
     # get app version from environment
-    env = elasticbeanstalk.get_environment(app_name, env_name, region)
-    label = env.version_label
-    result, request_id = clone_env(app_name, env_name, clone_name,
-                                   cname, label, scale, tags, region)
+    env = elasticbeanstalk.get_environment(clone_request.app_name,
+                                           clone_request.original_name, region)
+    clone_request.version_label = env.version_label
+    result, request_id = clone_env(clone_request, region)
 
     # Print status of env
     print_env_details(result, region, health=False)
@@ -634,41 +661,37 @@ def make_cloned_env(app_name, env_name, clone_name, cname, scale, tags, region,
 
     io.echo('Printing Status:')
     try:
-        wait_and_print_events(request_id, region)
+        wait_for_success_events(request_id, region, timeout_in_minutes=timeout)
     except TimeoutError:
         io.log_error(strings['timeout.error'])
 
 
-def clone_env(app_name, env_name, clone_name, cname, label, scale,
-              tags, region):
-    description = strings['env.clonedescription'].replace('{env-name}',
-                                                          env_name)
-
+def clone_env(clone_request, region):
     while True:
         try:
-            return elasticbeanstalk.clone_environment(
-                app_name, env_name, clone_name, cname, description, label,
-                scale, tags, region=region)
-
+            return elasticbeanstalk.clone_environment(clone_request,
+                                                      region=region)
         except InvalidParameterValueError as e:
             LOG.debug('cloning env returned error: ' + e.message)
             if re.match(responses['env.cnamenotavailable'], e.message):
                 io.echo(prompts['cname.unavailable'])
-                cname = io.prompt_for_cname()
+                clone_request.cname = io.prompt_for_cname()
             elif re.match(responses['env.nameexists'], e.message):
                 io.echo(strings['env.exists'])
-                current_environments = get_env_names(app_name, region)
-                unique_name = utils.get_unique_name(clone_name,
+                current_environments = get_env_names(clone_request.app_name,
+                                                     region)
+                unique_name = utils.get_unique_name(clone_request.env_name,
                                                     current_environments)
-                clone_name = io.prompt_for_environment_name(
+                clone_request.env_name = io.prompt_for_environment_name(
                     default_name=unique_name)
             else:
-                raise e
+                raise
 
         #try again
 
 
-def delete_app(app_name, region, force, nohang=False, cleanup=True):
+def delete_app(app_name, region, force, nohang=False, cleanup=True,
+               timeout=None):
     app = elasticbeanstalk.describe_application(app_name, region)
 
     if 'Versions' not in app:
@@ -696,11 +719,13 @@ def delete_app(app_name, region, force, nohang=False, cleanup=True):
         cleanup_ignore_file()
         fileoperations.clean_up()
     if not nohang:
-        wait_and_print_events(request_id, region, sleep_time=1,
-                              timeout_in_seconds=60*15)
+        if timeout is None:
+            timeout = 15
+        wait_for_success_events(request_id, region, sleep_time=1,
+                              timeout_in_minutes=timeout)
 
 
-def deploy(app_name, env_name, region, version, label, message):
+def deploy(app_name, env_name, region, version, label, message, timeout=None):
     if region:
         region_name = region
     else:
@@ -719,7 +744,9 @@ def deploy(app_name, env_name, region, version, label, message):
     request_id = elasticbeanstalk.update_env_application_version(env_name,
                                                     app_version_label, region)
 
-    wait_and_print_events(request_id, region, 60*5)
+    if timeout is None:
+        timeout = 5
+    wait_for_success_events(request_id, region, timeout_in_minutes=timeout)
 
 
 def status(app_name, env_name, region, verbose):
@@ -728,13 +755,14 @@ def status(app_name, env_name, region, verbose):
 
     if verbose:
         # Print number of running instances
-        env = elasticbeanstalk.get_environment_resources(env_name, region)
-        instances = [i['Id'] for i in env['EnvironmentResources']['Instances']]
+        env_dict = elasticbeanstalk.get_environment_resources(env_name, region)
+        instances = [i['Id'] for i in
+                     env_dict['EnvironmentResources']['Instances']]
         io.echo('  Running instances:', len(instances))
         #Get elb health
         try:
             load_balancer_name = [i['Name'] for i in
-                              env['EnvironmentResources']['LoadBalancers']][0]
+                                  env_dict['EnvironmentResources']['LoadBalancers']][0]
             instance_states = elb.get_health_of_instances(load_balancer_name,
                                                           region=region)
             for i in instance_states:
@@ -752,6 +780,11 @@ def status(app_name, env_name, region, verbose):
         except (IndexError, KeyError, NotFoundError):
             #No load balancer. Dont show instance status
             pass
+
+    # check platform version
+    latest = get_latest_solution_stack(env.platform.version, region)
+    if env.platform != latest:
+        io.log_alert(alerts['platform.old'])
 
 
 def print_environment_vars(app_name, env_name, region):
@@ -774,8 +807,8 @@ def logs(env_name, info_type, region, do_zip=False, instance_id=None):
 
     # Wait for logs to finish
     request_id = result['ResponseMetadata']['RequestId']
-    wait_and_print_events(request_id, region,
-                        timeout_in_seconds=60*2, sleep_time=1)
+    wait_for_success_events(request_id, region, timeout_in_minutes=2,
+                            sleep_time=1, stream_events=False)
 
     get_logs(env_name, info_type, region, do_zip=do_zip,
              instance_id=instance_id)
@@ -844,7 +877,21 @@ def get_logs(env_name, info_type, region, do_zip=False, instance_id=None):
             print_from_url(url)
 
 
-def setenv(app_name, env_name, var_list, region):
+def setenv(app_name, env_name, var_list, region, timeout=None):
+
+    options, options_to_remove = create_envvars_list(var_list)
+
+    request_id = elasticbeanstalk.update_environment(env_name, options, region,
+                                                 remove=options_to_remove)
+    try:
+        if timeout is None:
+            timeout = 4
+        wait_for_success_events(request_id, region, timeout_in_minutes=timeout)
+    except TimeoutError:
+        io.log_error(strings['timeout.error'])
+
+
+def create_envvars_list(var_list):
     namespace = 'aws:elasticbeanstalk:application:environment'
 
     options = []
@@ -852,8 +899,7 @@ def setenv(app_name, env_name, var_list, region):
     for pair in var_list:
         ## validate
         if not re.match('^[\w\\_.:/+@-][^=]*=([\w\\_.:/+@-][^=]*)?$', pair):
-            io.log_error(strings['setenv.invalidformat'])
-            return
+            raise InvalidOptionsError(strings['setenv.invalidformat'])
         else:
             option_name, value = pair.split('=')
             d = {'Namespace': namespace,
@@ -864,28 +910,38 @@ def setenv(app_name, env_name, var_list, region):
             else:
                 d['Value'] = value
                 options.append(d)
+    return options, options_to_remove
 
-    result = elasticbeanstalk.update_environment(env_name, options, region,
-                                                 remove=options_to_remove)
-    try:
-        request_id = result
-        wait_and_print_events(request_id, region, timeout_in_seconds=60*4)
-    except TimeoutError:
-        io.log_error(strings['timeout.error'])
+
+def get_data_from_url(url, timeout=20):
+    return urllib.request.urlopen(url, timeout=timeout).read()
 
 
 def print_from_url(url):
-    result = urllib.request.urlopen(url).read()
+    result = get_data_from_url(url)
     io.echo(result)
 
 
 def save_file_from_url(url, location, filename):
-    result = urllib.request.urlopen(url).read()
+    result = get_data_from_url(url)
 
     return fileoperations.save_to_file(result, location, filename)
 
 
-def terminate(env_name, region, nohang=False):
+def cli_update_exists(current_version):
+    try:
+        data = get_data_from_url('https://pypi.python.org/pypi/awsebcli/json',
+                                 timeout=5)
+        data = json.loads(data)
+        latest = data['info']['version']
+        return latest != current_version
+    except:
+        # Ignore all exceptions. We want to fail silently.
+        return False
+
+
+
+def terminate(env_name, region, nohang=False, timeout=None):
     request_id = elasticbeanstalk.terminate_environment(env_name, region)
 
     # disassociate with branch if branch default
@@ -894,8 +950,9 @@ def terminate(env_name, region, nohang=False):
         set_environment_for_current_branch(None)
 
     if not nohang:
-        wait_and_print_events(request_id, region,
-                              timeout_in_seconds=60*5)
+        if timeout is None:
+            timeout = 5
+        wait_for_success_events(request_id, region, timeout_in_minutes=timeout)
 
 
 def save_env_file(api_model):
@@ -946,12 +1003,20 @@ def cleanup_ignore_file():
 
 
 def create_app_version(app_name, region, label=None, message=None):
-    if heuristics.directory_is_empty():
-        io.log_warning(strings['appversion.none'])
-        return None
+    cwd = os.getcwd()
+    fileoperations._traverse_to_project_root()
+    try:
+        if heuristics.directory_is_empty():
+            io.log_warning(strings['appversion.none'])
+            return None
+    finally:
+        os.chdir(cwd)
 
     source_control = SourceControl.get_source_control()
-    # get version_label
+    if source_control.untracked_changes_exist():
+        io.log_warning(strings['sc.unstagedchanges'])
+
+    #get version_label
     if label:
         version_label = label
     else:
@@ -966,7 +1031,6 @@ def create_app_version(app_name, region, label=None, message=None):
     if len(description) > 200:
         description = description[:195] + '...'
 
-    io.log_info('Creating app_version archive "' + version_label + '"')
 
     # Check for zip or artifact deploy
     artifact = fileoperations.get_config_setting('deploy', 'artifact')
@@ -978,7 +1042,14 @@ def create_app_version(app_name, region, label=None, message=None):
         # Create zip file
         file_name = version_label + '.zip'
         file_path = fileoperations.get_zip_location(file_name)
-        source_control.do_zip(file_path)
+        # Check to see if file already exists from previous attempt
+        if not fileoperations.file_exists(file_path) and \
+                                version_label not in \
+                                get_app_version_labels(app_name, region):
+            # If it doesn't already exist, create it
+            io.echo(strings['appversion.create'].replace('{version}',
+                                                         version_label))
+            source_control.do_zip(file_path)
 
     # Get s3 location
     bucket = elasticbeanstalk.get_storage_location(region)
@@ -1004,7 +1075,7 @@ def create_app_version(app_name, region, label=None, message=None):
             if e.message.startswith('Application Version ') and \
                     e.message.endswith(' already exists.'):
                 # we must be deploying with an existing app version
-                io.log_warning('Deploying a previously deployed commit')
+                io.log_warning('Deploying a previously deployed commit.')
                 return version_label
             elif e.message == responses['app.notexists'].replace(
                     '{app-name}', '\'' + app_name + '\''):
@@ -1015,7 +1086,8 @@ def create_app_version(app_name, region, label=None, message=None):
                 raise
 
 
-def update_environment_configuration(app_name, env_name, region, nohang):
+def update_environment_configuration(app_name, env_name, region, nohang,
+                                     timeout=None):
     # get environment setting
     api_model = elasticbeanstalk.describe_configuration_settings(
         app_name, env_name, region=region
@@ -1039,14 +1111,16 @@ def update_environment_configuration(app_name, env_name, region, nohang):
         io.log_warning('No changes made. Exiting.')
         return
 
-    update_environment(env_name, changes, region, nohang, remove=remove)
+    update_environment(env_name, changes, region, nohang, remove=remove,
+                       timeout=timeout)
 
 
-def update_environment(env_name, changes, region, nohang, remove=[]):
+def update_environment(env_name, changes, region, nohang, remove=None,
+                       template=None, timeout=None, template_body=None):
     try:
-        request_id = elasticbeanstalk.update_environment(env_name, changes,
-                                                         region=region,
-                                                         remove=remove)
+        request_id = elasticbeanstalk.update_environment(
+            env_name, changes, remove=remove, region=region, template=template,
+            template_body=template_body)
     except InvalidStateError:
         io.log_error(prompts['update.invalidstate'])
         return
@@ -1060,13 +1134,17 @@ def update_environment(env_name, changes, region, nohang, remove=[]):
 
     io.echo('Printing Status:')
     try:
-        wait_and_print_events(request_id, region)
+        wait_for_success_events(request_id, region, timeout_in_minutes=timeout)
     except TimeoutError:
         io.log_error(strings['timeout.error'])
 
 
-def get_boolean_response():
-    response = io.prompt('y/n', default='y').lower()
+def get_boolean_response(text=None):
+    if text:
+        string = text + ' (y/n)'
+    else:
+        string = '(y/n)'
+    response = io.get_input(string, default='y').lower()
     while response not in ('y', 'n', 'yes', 'no'):
         io.echo(strings['prompt.invalid'],
                              strings['prompt.yes-or-no'])
@@ -1117,6 +1195,14 @@ def get_setting_from_current_branch(keyname):
 
 def get_current_branch_environment():
     return get_setting_from_current_branch('environment')
+
+
+def cname_swap(source_env, dest_env, region):
+    request_id = elasticbeanstalk.swap_environment_cnames(source_env, dest_env,
+                                                          region=region)
+
+    wait_for_success_events(request_id, region, timeout_in_minutes=1,
+                            sleep_time=2)
 
 
 def ssh_into_instance(instance_id, region, keep_open=False):
@@ -1187,16 +1273,10 @@ def prompt_for_ec2_keyname(region, env_name=None):
     return keyname
 
 
-def select_tier():
-    tier_list = Tier.get_latest_tiers()
-    io.echo(prompts['tier.prompt'])
-    tier = utils.prompt_for_item_in_list(tier_list)
-    return tier
-
-
 def get_solution_stack(solution_string, region):
     #If string is explicit, do not check
-    if re.match('\d\dbit Amazon Linux [0-9.]+ v[0-9.]+ running .*', solution_string):
+    if re.match(r'^\d\dbit [\w\s]+[0-9.]* v[0-9.]+ running .*$',
+                solution_string):
         return SolutionStack(solution_string)
 
     solution_string = solution_string.lower()
@@ -1255,7 +1335,9 @@ def _generate_and_upload_keypair(region, keys):
     file_name = fileoperations.get_ssh_folder() + keyname
 
     try:
-        exitcode = subprocess.call(['ssh-keygen', '-f', file_name])
+        exitcode = subprocess.call(
+            ['ssh-keygen', '-f', file_name, '-C', keyname]
+        )
     except OSError:
         raise CommandError(strings['ssh.notpresent'])
 
