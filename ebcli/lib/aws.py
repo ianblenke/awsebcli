@@ -42,6 +42,18 @@ _debug = False
 apply_patches()
 
 
+def _flush():
+    # Should be used for resetting tests only
+    global _api_clients, _profile, _id, _key, _region_name, _verify_ssl
+    _api_clients = {}
+    _get_botocore_session.botocore_session = None
+    _profile = None
+    _id = None
+    _key = None
+    _region_name = None
+    _verify_ssl = True
+
+
 def set_session_creds(id, key):
     global _api_clients, _id, _key
     _id = id
@@ -148,9 +160,10 @@ def make_api_call(service_name, operation_name, **operation_options):
         client = _get_client(service_name)
     except botocore.exceptions.UnknownEndpointError as e:
         raise NoRegionError(e)
-    except botocore.exceptions.PartialCredentialsError:
+    except botocore.exceptions.PartialCredentialsError as e:
         LOG.debug('Credentials incomplete')
-        raise CredentialsError('Your credentials are not complete')
+        raise CredentialsError('Your credentials are not complete. Error: {0}'
+                               .format(e))
 
     if not _verify_ssl:
         warnings.filterwarnings("ignore")

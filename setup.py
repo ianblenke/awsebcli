@@ -7,10 +7,18 @@ import ebcli
 
 requires = ['pyyaml>=3.11',
             'cement==2.4',
+            'pathspec==0.3.3',
             ## For botocore we need the following
+            'jmespath>=0.6.1',
             'python-dateutil>=2.1,<3.0.0',
-            'jmespath>=0.6.1'
-            ]
+            ## For docker-compose
+            'docopt >= 0.6.1, < 0.7',
+            'requests >= 2.6.1, < 2.7',
+            'texttable >= 0.8.1, < 0.9',
+            'websocket-client >= 0.11.0, < 1.0',
+            'docker-py >= 1.1.0, < 1.2',
+            'dockerpty >= 0.3.2, < 0.4',
+           ]
 
 try:
     with open('/etc/bash_completion.d/eb_completion.extra', 'w') as eo:
@@ -35,9 +43,10 @@ setup_options = dict(
     packages=find_packages('.', exclude=['tests*', 'docs*', 'sampleApps*']),
     package_dir={'ebcli': 'ebcli'},
     package_data={
-        'ebcli': ['bundled/botocore/data/aws/*.json',
-                  'bundled/botocore/data/aws/*/*.json'],
-        'ebcli.bundled.botocore.vendored.requests': ['*.pem']},
+        'ebcli.bundled.botocore': ['data/aws/*.json',
+                                   'data/aws/*/*.json'],
+        'ebcli.bundled.botocore.vendored.requests': ['*.pem'],
+        'ebcli.docker': ['containerfiles/*']},
     install_requires=requires,
     license="Apache License 2.0",
     classifiers=(
@@ -59,6 +68,19 @@ setup_options = dict(
     }
 )
 
+def _unpack_eggs(egg_list):
+    import os
+    for pkg in egg_list:
+        import pkg_resources
+        eggs = pkg_resources.require(pkg)
+        from setuptools.archive_util import unpack_archive
+        for egg in eggs:
+           if os.path.isdir(egg.location):
+               sys.path.insert(0, egg.location)
+               continue
+           unpack_archive(egg.location, os.path.abspath(os.path.dirname(egg.location)))
+
+
 if 'py2exe' in sys.argv:
     data_files = setup_options['package_data']
     # This will actually give us a py2exe command.
@@ -68,6 +90,7 @@ if 'py2exe' in sys.argv:
     import encodings
     # We need to manually include all cement.ext modules since py2exe doesnt
     # pull them in.
+    _unpack_eggs(['jmespath', 'python-dateutil', 'pyyaml'])
     includes = []
     for importer, modname, ispkg in pkgutil.iter_modules(cement.ext.__path__):
         includes.append('cement.ext.' + modname)
@@ -75,6 +98,7 @@ if 'py2exe' in sys.argv:
     setup_options['options'] = {
         'py2exe': {
             'includes': ['encodings'] + includes,
+            'excludes': ['Tkinter', 'tcl'],
             'optimize': 0,
             'skip_archive': True,
             'packages': ['ebcli'],

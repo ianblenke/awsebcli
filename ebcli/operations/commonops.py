@@ -11,24 +11,23 @@
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
 
-from datetime import datetime, timedelta
-import time
-import re
 import os
+import re
+import time
+from datetime import datetime, timedelta
 
 from cement.utils.misc import minimal_logger
 from cement.utils.shell import exec_cmd
 
-from ..lib import elasticbeanstalk, s3, aws, ec2
 from ..core import fileoperations, io
-from ..objects.sourcecontrol import SourceControl
-from ..resources.strings import strings, responses, prompts
-from ..lib import utils
+from ..core.fileoperations import _marker
+from ..docker import dockerrun
+from ..lib import aws, ec2, elasticbeanstalk, heuristics, s3, utils
+from ..lib.aws import InvalidParameterValueError
 from ..objects.exceptions import *
 from ..objects.solutionstack import SolutionStack
-from ..lib.aws import InvalidParameterValueError
-from ..lib import heuristics
-from ..docker import dockerrun
+from ..objects.sourcecontrol import SourceControl
+from ..resources.strings import strings, responses, prompts
 
 LOG = minimal_logger(__name__)
 
@@ -106,6 +105,8 @@ def _is_success_string(message):
     if message.startswith(responses['event.updatebad']):
         raise ServiceError(message)
     if message == responses['event.failedlaunch']:
+        raise ServiceError(message)
+    if message == responses['event.faileddeploy']:
         raise ServiceError(message)
     if message == responses['logs.pulled']:
         return True
@@ -304,28 +305,48 @@ def pull_down_app_info(app_name, default_env=None):
     )
     if keyname is None:
         keyname = -1
+
     return env.platform.name, keyname
 
 
 def open_webpage_in_browser(url, ssl=False):
     io.log_info('Opening webpage with default browser.')
-    if ssl:
-        url = 'https://' + url
-    else:
-        url = 'http://' + url
-
+    if not url.startswith('http'):
+        if ssl:
+            url = 'https://' + url
+        else:
+            url = 'http://' + url
+    LOG.debug('url={}'.format(url))
     if (not fileoperations.program_is_installed('python')) or \
             utils.is_ssh():
         # python probably isn't on path
         ## try to run webbrowser internally
+        LOG.debug('Running webbrowser inline.')
         import webbrowser
         webbrowser.open_new_tab(url)
     else:
-        #By running as a subprocess, we can capture stdout
+        # this is the prefered way to open a web browser.
+        LOG.debug('Running webbrowser as subprocess.')
         from subprocess import Popen, PIPE
 
-        Popen(['python -m webbrowser \'' + url + '\''], stderr=PIPE,
+        p = Popen(['python -m webbrowser \'' + url + '\''], stderr=PIPE,
               stdout=PIPE, shell=True)
+        '''
+         We need to fork the process for various reasons
+            1. Calling p.communicate waits for the thread. Some browsers
+                (if opening a new window) dont return to the thread until
+                 the browser closes. We dont want the terminal to hang in
+                 this case
+            2. If we dont call p.communicate, there is a race condition. If
+                the main process terminates before the browser call is made,
+                the call never gets made and the browser doesn't open.
+            Therefor the solution is to fork, then wait for the child
+            in the backround.
+         '''
+        pid = os.fork()
+        if pid == 0:  # Is child
+            p.communicate()
+        # Else exit
 
 
 def get_application_names():
@@ -412,16 +433,8 @@ def create_app_version(app_name, label=None, message=None):
         file_path = artifact
     else:
         # Create zip file
-        file_name = version_label + '.zip'
-        file_path = fileoperations.get_zip_location(file_name)
-        # Check to see if file already exists from previous attempt
-        if not fileoperations.file_exists(file_path) and \
-                                version_label not in \
-                                get_app_version_labels(app_name):
-            # If it doesn't already exist, create it
-            io.echo(strings['appversion.create'].replace('{version}',
-                                                         version_label))
-            source_control.do_zip(file_path)
+        file_name, file_path = _zip_up_project(
+            app_name, version_label, source_control)
 
     # Get s3 location
     bucket = elasticbeanstalk.get_storage_location()
@@ -456,6 +469,26 @@ def create_app_version(app_name, label=None, message=None):
                 create_app(app_name)
             else:
                 raise
+
+
+def _zip_up_project(app_name, version_label, source_control):
+    # Create zip file
+    file_name = version_label + '.zip'
+    file_path = fileoperations.get_zip_location(file_name)
+    # Check to see if file already exists from previous attempt
+    if not fileoperations.file_exists(file_path) and \
+                            version_label not in \
+                            get_app_version_labels(app_name):
+        # If it doesn't already exist, create it
+        io.echo(strings['appversion.create'].replace('{version}',
+                                                     version_label))
+        ignore_files = fileoperations.get_ebignore_list()
+        if ignore_files is None:
+            source_control.do_zip(file_path)
+        else:
+            io.log_info('Found .ebignore, using system zip.')
+            fileoperations.zip_up_project(file_path, ignore_list=ignore_files)
+    return file_name, file_path
 
 
 def update_environment(env_name, changes, nohang, remove=None,
@@ -501,12 +534,39 @@ def set_environment_for_current_branch(value):
     write_setting_to_current_branch('environment', value)
 
 
+def get_current_branch_environment():
+    return get_setting_from_current_branch('environment')
+
+
+def get_default_keyname():
+    return get_config_setting_from_branch_or_default('default_ec2_keyname')
+
+
+def get_default_profile():
+    try:
+        return get_config_setting_from_branch_or_default('profile')
+    except NotInitializedError:
+        return None
+
+
+def get_default_region():
+    try:
+        return get_config_setting_from_branch_or_default('default_region')
+    except NotInitializedError:
+        return None
+
+
+def get_default_solution_stack():
+    return get_config_setting_from_branch_or_default('default_platform')
+
+
 def get_setting_from_current_branch(keyname):
     source_control = SourceControl.get_source_control()
 
     branch_name = source_control.get_current_branch()
 
     branch_dict = fileoperations.get_config_setting('branch-defaults', branch_name)
+
     if branch_dict is None:
         return None
     else:
@@ -516,8 +576,13 @@ def get_setting_from_current_branch(keyname):
             return None
 
 
-def get_current_branch_environment():
-    return get_setting_from_current_branch('environment')
+def get_config_setting_from_branch_or_default(key_name, default=_marker):
+    setting = get_setting_from_current_branch(key_name)
+
+    if setting is not None:
+        return setting
+    else:
+        return fileoperations.get_config_setting('global', key_name, default=default)
 
 
 def get_solution_stack(solution_string):

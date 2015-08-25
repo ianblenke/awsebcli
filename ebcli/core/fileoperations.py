@@ -11,26 +11,26 @@
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
 
+import codecs
+import glob
+import json
 import os
 import shutil
-import zipfile
-import sys
-import glob
 import stat
-import codecs
-import json
+import sys
+import zipfile
 
+from botocore.compat import six
+from cement.utils.misc import minimal_logger
+from six import StringIO
 from yaml import load, dump, safe_dump
 from yaml.parser import ParserError
 from yaml.scanner import ScannerError
+import pathspec
 try:
     import configparser
 except ImportError:
     import ConfigParser as configparser
-
-from botocore.compat import six
-from six import StringIO
-from cement.utils.misc import minimal_logger
 
 from ..core import io
 from ..objects.exceptions import NotInitializedError, InvalidSyntaxError, \
@@ -67,6 +67,7 @@ ebcli_section = 'profile eb-cli'
 app_version_folder = beanstalk_directory + 'app_versions'
 logs_folder = beanstalk_directory + 'logs' + os.path.sep
 
+_marker = object()
 
 def _get_option(config, section, key, default):
     try:
@@ -115,6 +116,14 @@ def old_eb_config_present():
 
 def config_file_present():
     return os.path.isfile(local_config_file)
+
+
+def project_file_path(filename):
+    return os.path.join(get_project_root(), filename)
+
+
+def project_file_exists(filename):
+    return file_exists(project_file_path(filename))
 
 
 def get_values_from_old_eb():
@@ -171,9 +180,6 @@ def save_to_aws_config(access_key, secret_key):
     set_user_only_permissions(aws_config_location)
 
 
-_marker = object()
-
-
 def set_user_only_permissions(location):
     """
     Sets permissions so that only a user can read/write (chmod 400).
@@ -203,6 +209,15 @@ def _set_user_only_permissions_file(location, ex=False):
     os.chmod(location, permission)
 
 
+def set_all_unrestricted_permissions(location):
+    """
+    Set permissions so that user, group, and others all have read,
+    write and execute permissions (chmod 777).
+    :param location: Full location of either a folder or a location
+    """
+    os.chmod(location, stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO)
+
+
 def get_current_directory_name():
     dirname, filename = os.path.split(os.getcwd())
     if sys.version_info[0] < 3:
@@ -221,28 +236,6 @@ def get_application_name(default=_marker):
     if default is _marker:
         raise NotInitializedError
     return default
-
-
-def get_default_region():
-    try:
-        return get_config_setting('global', 'default_region')
-    except NotInitializedError:
-        return None
-
-
-def get_default_solution_stack():
-    return get_config_setting('global', 'default_platform')
-
-
-def get_default_keyname():
-    return get_config_setting('global', 'default_ec2_keyname')
-
-
-def get_default_profile():
-    try:
-        return get_config_setting('global', 'profile')
-    except NotInitializedError:
-        return None
 
 
 def touch_config_folder():
@@ -283,6 +276,15 @@ def _traverse_to_project_root():
 
     else:
         LOG.debug('Project root found at: ' + cwd)
+
+
+def get_project_root():
+    cwd = os.getcwd()
+    try:
+        _traverse_to_project_root()
+        return os.getcwd()
+    finally:
+        os.chdir(cwd)
 
 
 def get_zip_location(file_name):
@@ -347,32 +349,35 @@ def delete_app_versions():
         os.chdir(cwd)
 
 
-def zip_up_folder(directory, location):
+def zip_up_folder(directory, location, ignore_list=None):
     cwd = os.getcwd()
     try:
         os.chdir(directory)
         io.log_info('Zipping up folder at location: ' + str(os.getcwd()))
         zipf = zipfile.ZipFile(location, 'w', zipfile.ZIP_DEFLATED)
-        _zipdir('./', zipf)
+        _zipdir('./', zipf, ignore_list=ignore_list)
         zipf.close()
         LOG.debug('File size: ' + str(os.path.getsize(location)))
     finally:
         os.chdir(cwd)
 
 
-def zip_up_project(location):
+def zip_up_project(location, ignore_list=None):
     cwd = os.getcwd()
 
     try:
         _traverse_to_project_root()
 
-        zip_up_folder('./', location)
+        zip_up_folder('./', location, ignore_list=ignore_list)
 
     finally:
         os.chdir(cwd)
 
 
-def _zipdir(path, zipf):
+def _zipdir(path, zipf, ignore_list=None):
+    if ignore_list is None:
+        ignore_list = list()
+    ignore_list = ['./' + i for i in ignore_list]
     zipped_roots = []
     for root, dirs, files in os.walk(path):
         if '.elasticbeanstalk' in root:
@@ -384,8 +389,9 @@ def _zipdir(path, zipf):
                 zipf.write(root)
                 zipped_roots.append(root)
             cur_file = os.path.join(root, f)
-            if cur_file.endswith('~'):
+            if cur_file.endswith('~') or cur_file in ignore_list:
                 # Ignore editor backup files (like file.txt~)
+                # Ignore anything in the .ebignore file
                 io.log_info('  -skipping: ' + str(cur_file))
             else:
                 io.log_info('  +adding: ' + str(cur_file))
@@ -510,6 +516,7 @@ def write_config_setting(section, key_name, value):
 def get_config_setting(section, key_name, default=_marker):
     # get setting from global if it exists
     cwd = os.getcwd()  # save working directory
+
     try:
         _traverse_to_project_root()
 
@@ -577,6 +584,27 @@ def eb_file_exists(location):
         os.chdir(cwd)
 
 
+def directory_empty(location):
+    return not os.listdir(location)
+
+
+def get_ebignore_list():
+    location = get_project_file_full_location('.ebignore')
+
+    if not os.path.isfile(location):
+        return None
+
+    '''
+    This library will parse the ignore file, compare it to the current files
+    and give us a list of files to ignore
+    '''
+    with open(location, 'r') as f:
+        spec = pathspec.PathSpec.from_lines('gitignore', f)
+
+    ignore_list = [f for f in spec.match_tree(get_project_root())]
+    return ignore_list
+
+
 def make_eb_dir(location):
     cwd = os.getcwd()
     try:
@@ -622,9 +650,20 @@ def read_from_text_file(location):
     with codecs.open(location, 'rt', encoding=None) as f:
         return f.read()
 
+
 def write_to_text_file(data, location):
     with codecs.open(location, 'wt', encoding=None) as f:
         f.write(data)
+
+
+def append_to_text_file(location, data):
+    with codecs.open(location, 'at', encoding=None) as f:
+        f.write(data)
+
+
+def readlines_from_text_file(location):
+    with codecs.open(location, 'rt', encoding=None) as f:
+        return f.readlines()
 
 
 def get_project_file_full_location(location):
@@ -639,3 +678,7 @@ def get_project_file_full_location(location):
 
 def get_eb_file_full_location(location):
     return get_project_file_full_location(beanstalk_directory + location)
+
+
+def get_home():
+    return os.path.expanduser('~')
