@@ -13,7 +13,7 @@ For more information about a specific command, type:
     eb {cmd} --help
 
 
-For detailed information about EB CLI, see `EB Command Line Reference <http://docs.aws.amazon.com/elasticbeanstalk/latest/dg/command-reference-eb.html>`__
+For detailed information about EB CLI, see `EB Command Line Reference. <http://docs.aws.amazon.com/elasticbeanstalk/latest/dg/command-reference-eb.html>`__
 
 ------------
 Installation
@@ -23,9 +23,9 @@ You will need administrator/sudo privileges unless you install into a virtual en
 To install you will first need to install Python and Pip.
 The most recent version of Python now includes pip.
 
-`To install Python, go to <https://www.python.org/downloads/>`__
+`To install Python, go here. <https://www.python.org/downloads/>`__
 
-If you already have Python, but need to install Pip, `go to <http://pip.readthedocs.org/en/latest/installing.html>`__
+If you already have Python, but need to install Pip, `go here. <http://pip.readthedocs.org/en/latest/installing.html>`__
 
 After you have installed Pip, run the following command:
 
@@ -36,7 +36,7 @@ Getting Started
 ---------------
 
 EB CLI requires you to have AWS security credentials.
-For procedures to get security credentials, `see <http://docs.aws.amazon.com/general/latest/gr/managing-aws-access-keys.html>`__
+For procedures to get security credentials, `see the documentation. <http://docs.aws.amazon.com/general/latest/gr/managing-aws-access-keys.html>`__
 
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 1. Create a new directory for your project.
