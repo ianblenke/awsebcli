@@ -275,6 +275,9 @@ def credentials_are_valid(region):
         return True
     except CredentialsError:
         return False
+    except NotAuthorizedError:
+        io.log_error('The current user does not have the correct permissions.')
+        return False
 
 
 def setup(app_name, region, solution):
@@ -376,15 +379,30 @@ def get_default_profile(region):
     # get list of profiles
     try:
         profile = DEFAULT_ROLE_NAME
-        profile_names = iam.get_instance_profile_names(region=region)
-        if profile not in profile_names:
-            iam.create_instance_profile(profile)
-            # Todo: add role to instance profile
+        try:
+            iam.create_instance_profile(profile, region=region)
+            role = get_default_role(region)
+            iam.add_role_to_profile(profile, role, region=region)
+        except AlreadyExistsError:
+            pass
     except NotAuthorizedError:
         # Not a root account. Just assume role exists
         return DEFAULT_ROLE_NAME
 
     return profile
+
+
+def get_default_role(region):
+    role = DEFAULT_ROLE_NAME
+    document = '{"Version": "2008-10-17","Statement": [{"Action":' \
+               ' "sts:AssumeRole","Principal": {"Service": ' \
+               '"ec2.amazonaws.com"},"Effect": "Allow","Sid": ""}]}'
+    try:
+        iam.create_role(role, document, region=region)
+    except AlreadyExistsError:
+        pass
+    return role
+
 
 
 def open_app(app_name, env_name, region):
@@ -1164,7 +1182,6 @@ def get_solution_stack(solution_string, region):
     #If string is explicit, do not check
     if re.match('\d\dbit Amazon Linux [0-9.]+ v[0-9.]+ running .*', solution_string):
         return SolutionStack(solution_string)
-
 
     solution_string = solution_string.lower()
     solution_stacks = elasticbeanstalk.get_available_solution_stacks(region)
