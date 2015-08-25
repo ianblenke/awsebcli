@@ -120,9 +120,10 @@ strings = {
     'local.logs.lastlocation': 'Logs were most recently created {prettydate} and written to {location}',
     'local.logs.symlink': 'Updated symlink at {symlink}',
     'local.logs.nologs': 'There are currently no local logs.',
-    'setenv.invalidformat': 'You must use the format VAR_NAME=KEY to set an environment variable. Variables and keys '
-                            'cannot contain any spaces or =. They must start'
-                            ' with a letter, number or one of the following symbols: \\ _ . : / + - @',
+    'setenv.invalidformat': 'You must use the format VAR_NAME=KEY to set an environment variable. '
+                            'Varables may not contain the = symbol. '
+                            'Variables and keys must start with a letter, '
+                            'number or one of the following symbols: \\ _ . : / + - @',
     'tags.invalidformat': 'You must provide a comma-separated list using the format name=value to set tags. '
                           'Tags may only contain letters, numbers, and the following symbols: / _ . : + % - @',
     'tags.max': 'Elastic Beanstalk supports a maximum of 7 tags.',
@@ -136,6 +137,7 @@ strings = {
     'cname.unavailable': 'The CNAME prefix {cname} is already in use.',
     'ssh.openingport': 'INFO: Attempting to open port 22.',
     'ssh.portopen': 'INFO: SSH port 22 open.',
+    'ssh.notopening': 'Found source restriction on ssh port; not attempting to open. Use the --force flag to force opening of the port.',
     'ssh.closeport': 'INFO: Closed port 22 on ec2 instance security group.',
     'ssh.uploaded': 'Uploaded SSH public key for "{keyname}" into EC2 for region {region}.',
     'swap.unsupported': 'You must have at least 2 running environments to swap CNAMEs.',
@@ -301,7 +303,9 @@ flag_text = {
     # Local
     'local.run.envvars': 'a comma-separated list of environment variables as key=value pairs',
     'local.run.hostport': 'the host port that is exposed and mapped to the container port',
+    'local.run.insecuressl': 'Allow insecure connections to the docker registry',
     'local.setenv.vars': 'space-separated list in format: VAR_NAME=KEY',
+
     # Logs
     'logs.all': 'retrieve all logs',
     'logs.zip': 'retrieve all logs as .zip',
@@ -319,6 +323,7 @@ flag_text = {
     'ssh.number': 'index of instance in list',
     'ssh.instance': 'instance id',
     'ssh.keepopen': 'keep port 22 open',
+    'ssh.force': 'force port 22 open to 0.0.0.0',
     'ssh.setup': 'setup SSH for the environment',
 
     # terminate
@@ -351,6 +356,7 @@ responses = {
     'event.failedlaunch': 'Failed to launch environment.',
     'event.faileddeploy': 'Failed to deploy application.',
     'event.updatebad': 'Update environment operation is complete, but with errors.',
+    'event.updatefailed': 'Failed to deploy configuration.',
     'git.norepository': 'Error: Not a git repository '
                         '(or any of the parent directories): .git',
     'env.updatesuccess': 'Environment update completed successfully.',

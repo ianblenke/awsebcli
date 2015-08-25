@@ -29,7 +29,6 @@ class LocalController(AbstractBaseController):
     def do_command(self):
         self.app.args.print_help()
 
-
     @classmethod
     def _add_to_handler(cls, handler):
         handler.register(cls)
@@ -47,7 +46,7 @@ class LocalController(AbstractBaseController):
         if len(commands) == 1:
             aliases = [c.Meta.aliases[0] for c in self._get_child_controllers()]
             io.echo(*aliases)
-        else: # Need to pass to next controller
+        else:  # Need to pass to next controller
             pass
 
 
@@ -62,12 +61,15 @@ class LocalRunController(AbstractBaseController):
         usage = 'eb local run [options ...]'
         arguments = [(['--envvars'], dict(help=flag_text['local.run.envvars'])),
                      (['--port'],
-                         dict(type=int, help=flag_text['local.run.hostport']))]
+                         dict(type=int, help=flag_text['local.run.hostport'])),
+                     (['--allow-insecure-ssl'],
+                         dict(action='store_true', help=flag_text['local.run.insecuressl']))]
 
     def do_command(self):
         compat.setup()
         cnt = factory.make_container(self.app.pargs.envvars,
-                                     self.app.pargs.port)
+                                     self.app.pargs.port,
+                                     self.app.pargs.allow_insecure_ssl)
         cnt.validate()
         cnt.start()
 
