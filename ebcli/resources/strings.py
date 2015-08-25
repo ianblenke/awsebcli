@@ -171,6 +171,7 @@ prompts = {
     'clone.latest': 'There is a newer version of the platform used by the environment you are cloning.\n'
                     'Select the version of the platform that you want to use for the clone.',
     'clone.latestwarn': 'Launching environment clone on most recent platform version. Override this behavior by using the "--exact" option.',
+    'create.dockerrunupgrade': 'The Multi-container Docker platform does not support the version number of the Dockerrun.aws.json file that you provided.'
 }
 
 alerts = {
@@ -302,6 +303,7 @@ responses = {
     'swap.success': 'Completed swapping CNAMEs for environments',
     'cfg.nameexists': 'Configuration Template {name} already exists.',
     'create.noplatform': 'Unable to determine base for template pack (no solution stack)',
+    'create.ecsdockerrun1': 'ECS Application sourcebundle validation error: Unsupported AWSEBDockerrunVersion:',
 }
 git_ignore = [
     '# Elastic Beanstalk Files',        # comment line

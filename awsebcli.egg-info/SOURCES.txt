@@ -176,6 +176,8 @@ ebcli/core/globals.py
 ebcli/core/hooks.py
 ebcli/core/io.py
 ebcli/core/operations.py
+ebcli/docker/__init__.py
+ebcli/docker/dockerrun.py
 ebcli/lib/__init__.py
 ebcli/lib/aws.py
 ebcli/lib/botopatch.py

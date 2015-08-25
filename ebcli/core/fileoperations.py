@@ -18,6 +18,7 @@ import sys
 import glob
 import stat
 import codecs
+import json
 
 from yaml import load, dump, safe_dump
 from yaml.parser import ParserError
@@ -536,6 +537,16 @@ def get_config_setting(section, key_name, default=_marker):
     return value
 
 
+def get_json_dict(fullpath):
+    """
+    Read json file at fullpath and deserialize as dict.
+    :param fullpath: str: path to the json file
+    :return: dict
+    """
+
+    return json.loads(read_from_text_file(fullpath))
+
+
 def _get_yaml_dict(filename):
     try:
         with codecs.open(filename, 'r', encoding='utf8') as f:
@@ -596,6 +607,11 @@ def write_to_data_file(location, data):
 
 def read_from_data_file(location):
     with codecs.open(location, 'rb', encoding=None) as f:
+        return f.read()
+
+
+def read_from_text_file(location):
+    with codecs.open(location, 'rt', encoding=None) as f:
         return f.read()
 
 

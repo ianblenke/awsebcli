@@ -35,6 +35,7 @@ from ..objects.solutionstack import SolutionStack
 from ..objects.tier import Tier
 from ..lib.aws import InvalidParameterValueError
 from ..lib import heuristics
+from ..docker import dockerrun
 
 LOG = minimal_logger(__name__)
 DEFAULT_ROLE_NAME = 'aws-elasticbeanstalk-ec2-role'
@@ -231,6 +232,16 @@ def prompt_for_solution_stack(region):
     # First check to see if we know what language the project is in
     platform = heuristics.find_language_type()
 
+    if platform == 'Docker':
+        # Check to see if dockerrun is version one or two
+        dockerrun_file = dockerrun.get_dockerrun(
+            os.path.join(os.getcwd(), 'Dockerrun.aws.json'))
+        if dockerrun_file:
+            if dockerrun_file.get('AWSEBDockerrunVersion') == 1:
+                platform = 'Docker'
+            else:
+                platform = 'Multi-container Docker'
+
     if platform is not None:
         io.echo()
         io.echo(prompts['platform.validate'].replace('{platform}', platform))
@@ -256,6 +267,12 @@ def prompt_for_solution_stack(region):
         io.echo()
         io.echo(prompts['sstack.version'])
         version = utils.prompt_for_item_in_list(versions)
+    elif len(versions) < 1:
+        if not region:
+            region = aws.get_default_region()
+        raise NotFoundError('Platform "{platform}" not found in region '
+                            '"{region}".'.format(platform=platform,
+                                                region=region))
     else:
         version = versions[0]
 

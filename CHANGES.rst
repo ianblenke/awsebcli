@@ -3,6 +3,11 @@ Changelog
 =========
 
 ------------------
+3.1.4 (2015-03-24)
+------------------
+- Add support for Multi-container Docker platform
+
+------------------
 3.1.3 (2015-03-13)
 ------------------
 - Added option on create for specifying database version (--database.version)
