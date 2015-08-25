@@ -1,6 +1,6 @@
 Metadata-Version: 1.1
 Name: awsebcli
-Version: 3.1
+Version: 3.1.1
 Summary: Command Line Interface for AWS EB.
 Home-page: http://aws.amazon.com/elasticbeanstalk/
 Author: Nick Humrich
@@ -232,9 +232,18 @@ Description: ======
             eb use dev
         
         Now whenever you switch to a new branch, your default environment will also switch.
+        
+        
         =========
         Changelog
         =========
+        
+        ------------------
+        3.1.1 (2015-02-24)
+        ------------------
+        - Fix git issue on windows
+        - Support older versions of git
+        - Saved Configurations now work with Worker tier
         
         ----------------
         3.1 (2015-02-17)
@@ -242,8 +251,8 @@ Description: ======
         - Editor backup files (file.txt~) no longer included in application zip
         - Added commands for Saved Configurations (eb config --help)
         - Now receive alerts for an outdated cli and outdated environment platform.
-        - Deploy now works in subdirectories.
-        - Config now works in subdirectories.
+        - Deploy now works in subdirectories
+        - Config now works in subdirectories
         - Can now specify your own timeout period with "--timeout x"
         - Can now specify environment variables on environment create with "--envvars"
         - Can now get the latest platform version when you clone an environment. "eb clone"
