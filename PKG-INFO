@@ -1,6 +1,6 @@
 Metadata-Version: 1.1
 Name: awsebcli
-Version: 3.4
+Version: 3.4.2
 Summary: Command Line Interface for AWS EB.
 Home-page: http://aws.amazon.com/elasticbeanstalk/
 Author: Nick Humrich
@@ -227,8 +227,11 @@ Description: ======
         For example:
         
             git checkout master
+        
             eb use prod
+        
             git checkout develop
+        
             eb use dev
         
         Now whenever you switch to a new branch, your default environment will also switch.
@@ -238,8 +241,13 @@ Description: ======
         Changelog
         =========
         
+        ------------------
+        3.4.2 (2015-05-09)
+        ------------------
+        - Fix issue with installation for eb local files
+        
         ----------------
-        3.4 (2015-04-28)
+        3.4 (2015-05-07)
         ----------------
         - Added 'localContainerDefinitions' section for multi-continer docker
         - Multi-container docker containers now correctly read 'environment'
@@ -343,6 +351,7 @@ Description: ======
         - Default database username changed from admin to ebroot
         - Trim application version description if it is too long
         - Application version no longer includes git hash
+        
 Platform: UNKNOWN
 Classifier: Development Status :: 5 - Production/Stable
 Classifier: Intended Audience :: Developers

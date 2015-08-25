@@ -182,6 +182,12 @@ ebcli/containers/log.py
 ebcli/containers/multicontainer.py
 ebcli/containers/pathconfig.py
 ebcli/containers/preconfigured_container.py
+ebcli/containers/containerfiles/container_config.json
+ebcli/containers/containerfiles/glassfish-runtime-4.0-jdk7
+ebcli/containers/containerfiles/glassfish-runtime-4.1-jdk8
+ebcli/containers/containerfiles/golang-runtime-1.3
+ebcli/containers/containerfiles/golang-runtime-1.4
+ebcli/containers/containerfiles/python3-runtime
 ebcli/controllers/__init__.py
 ebcli/controllers/abort.py
 ebcli/controllers/clone.py
