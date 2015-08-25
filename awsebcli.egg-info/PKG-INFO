@@ -1,6 +1,6 @@
 Metadata-Version: 1.1
 Name: awsebcli
-Version: 3.1.1
+Version: 3.1.2
 Summary: Command Line Interface for AWS EB.
 Home-page: http://aws.amazon.com/elasticbeanstalk/
 Author: Nick Humrich
@@ -237,6 +237,13 @@ Description: ======
         =========
         Changelog
         =========
+        
+        ------------------
+        3.1.2 (2015-02-26)
+        ------------------
+        - Fix multithreaded issue on python 3.4.3
+        - Fix environment names printing in columns
+        - Update botocore to 0.93.0
         
         ------------------
         3.1.1 (2015-02-24)
