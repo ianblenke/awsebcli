@@ -10,7 +10,6 @@ awsebcli.egg-info/entry_points.txt
 awsebcli.egg-info/requires.txt
 awsebcli.egg-info/top_level.txt
 bin/__init__.py
-bin/eb
 bin/eb_completion.bash
 botocore_eb/__init__.py
 botocore_eb/auth.py

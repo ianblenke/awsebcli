@@ -1,6 +1,6 @@
 Metadata-Version: 1.1
 Name: awsebcli
-Version: 3.0.10
+Version: 3.0.11
 Summary: Command Line Interface for AWS EB.
 Home-page: http://aws.amazon.com/elasticbeanstalk/
 Author: Nick Humrich
@@ -236,6 +236,11 @@ Description: ======
         =========
         Changelog
         =========
+        
+        -------------------
+        3.0.11 (2014-02-09)
+        -------------------
+        - Fixed Zipping issue for Windows Containers
         
         -------------------
         3.0.10 (2014-11-24)
