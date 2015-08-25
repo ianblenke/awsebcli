@@ -6,11 +6,10 @@ from setuptools import setup, find_packages
 import ebcli
 
 requires = ['pyyaml>=3.11',
+            'botocore>=1.0.1',
             'cement==2.4',
+            'colorama==0.3.3',
             'pathspec==0.3.3',
-            ## For botocore we need the following
-            'jmespath>=0.6.1',
-            'python-dateutil>=2.1,<3.0.0',
             ## For docker-compose
             'docopt >= 0.6.1, < 0.7',
             'requests >= 2.6.1, < 2.7',
@@ -19,6 +18,9 @@ requires = ['pyyaml>=3.11',
             'docker-py >= 1.1.0, < 1.2',
             'dockerpty >= 0.3.2, < 0.4',
            ]
+
+if not sys.platform.startswith('win'):
+    requires.append('blessed==1.9.5')
 
 try:
     with open('/etc/bash_completion.d/eb_completion.extra', 'w') as eo:
@@ -43,10 +45,9 @@ setup_options = dict(
     packages=find_packages('.', exclude=['tests*', 'docs*', 'sampleApps*']),
     package_dir={'ebcli': 'ebcli'},
     package_data={
-        'ebcli.bundled.botocore': ['data/aws/*.json',
-                                   'data/aws/*/*.json'],
-        'ebcli.bundled.botocore.vendored.requests': ['*.pem'],
-        'ebcli.containers': ['containerfiles/*']},
+        'ebcli.lib': ['botocoredata/*/*/*.json'],
+        'ebcli.containers': ['containerfiles/*'],
+        'ebcli.labs': ['cloudwatchfiles/*.config']},
     install_requires=requires,
     license="Apache License 2.0",
     classifiers=(
@@ -58,7 +59,6 @@ setup_options = dict(
         'Programming Language :: Python',
         'Programming Language :: Python :: 2.7',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.3',
         'Programming Language :: Python :: 3.4',
     ),
     entry_points={

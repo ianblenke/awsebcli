@@ -13,7 +13,11 @@
 
 import re
 
-from ..core import globals as eb
+from cement.utils.misc import minimal_logger
+
+from ..lib import utils
+
+LOG = minimal_logger(__name__)
 
 
 class SolutionStack():
@@ -22,6 +26,7 @@ class SolutionStack():
         self.platform = self.get_platform(ss_string)
         self.version = self.get_version(ss_string)
         self.server = self.get_server(ss_string)
+        self.stack_version = self.get_stack_version(ss_string)
         self.string = self.name
 
     def __str__(self):
@@ -33,12 +38,17 @@ class SolutionStack():
     def __ne__(self, other):
         return self.__dict__ != other.__dict__
 
+    def has_healthd_support(self):
+        # ToDo: Currently stacks are at 1.9, before release change this to 2.0
+        return utils.parse_version(self.stack_version) \
+               >= utils.parse_version('1.9')
+
     @staticmethod
     def get_platform(ss_string):
         pattern = re.compile('.+running\s([^0-9]+).*')
         matcher = re.match(pattern, ss_string)
         if matcher is None:
-            eb.app.log.debug("Can not find a platform in string: " + ss_string)
+            LOG.debug("Can not find a platform in string: " + ss_string)
             return ss_string
         return matcher.group(1).strip()
 
@@ -47,7 +57,7 @@ class SolutionStack():
         pattern = re.compile('.+running\s(.*)')
         matcher = re.match(pattern, ss_string)
         if matcher is None:
-            eb.app.log.debug("Can not find a version in string: " + ss_string)
+            LOG.debug("Can not find a version in string: " + ss_string)
             return ss_string
         return matcher.group(1)
 
@@ -56,7 +66,16 @@ class SolutionStack():
         pattern = re.compile('(.*)\srunning\s.*')
         matcher = re.match(pattern, ss_string)
         if matcher is None:
-            eb.app.log.debug("Can not find a server in string: " + ss_string)
+            LOG.debug("Can not find a server in string: " + ss_string)
+            return ss_string
+        return matcher.group(1)
+
+    @staticmethod
+    def get_stack_version(ss_string):
+        pattern = re.compile('.+v([0-9.]+)\srunning\s.*')
+        matcher = re.match(pattern, ss_string)
+        if matcher is None:
+            LOG.debug("Can not find a patch version in string: " + ss_string)
             return ss_string
         return matcher.group(1)
 

@@ -36,6 +36,7 @@ strings = {
     'abort.info': 'Cancels an environment update or deployment.',
     'logs.info': 'Gets recent logs.',
     'use.info': 'Sets default environment.',
+    'health.info': 'Shows detailed environment health.',
     'logs.epilog': 'This command displays the last 100 lines of logs. To retrieve all logs, use the "--all" option.',
     'deploy.info': 'Deploys your source code to the environment.',
     'platform.info': 'Manages platforms.',
@@ -170,6 +171,19 @@ strings = {
     'download.info': 'Download Application Version.',
     'convert-dockkerrun.info': 'Converts Dockerrun.aws.json from version 1 to version 2.',
     'cleanup-versions.info': 'Cleans up old application versions.',
+    'cloudwatch-setup.info': 'Create .ebextensions files necessary for setting up CloudWatch used in logging instance deployment.',
+    'cloudwatch-setup.alreadysetup': 'CloudWatch file {filename} is already set up.',
+    'cloudwatch-stream.notsetup': 'eb-activity.log not setup with AWS Cloudwatch for this environment.\n'
+                                  'Try running "eb labs cloudwatch-setup".',
+    'cloudwatch-setup.text': '.ebextensions created. In order to complete setup you will need\n'
+                             'to check in any changes, (if applicable) and run "eb deploy".\n'
+                             'You will also need the cloudwatch log permissions for this IAM User\n'
+                             'as well as for the environments instance profile.\n'
+                             'For more information see: http://docs.aws.amazon.com/elasticbeanstalk/latest/dg/AWSHowTo.cloudwatchlogs.html',
+    'cloudwatch-setup.removetext': 'Removed .ebextensions. In order to complete removal you\n'
+                                   'will need to check in any changes, (if applicable) an run\n'
+                                   '"eb deploy".',
+    'setup-ssl.info': 'Sets up ssl on your environment.',
 }
 
 prompts = {
@@ -232,6 +246,13 @@ prompts = {
     'create.dockerrunupgrade': 'Multicontainer Docker environments do not support the version number of the Dockerrun.aws.json file that you provided. Type "eb labs convert-dockerrun" to convert it to a newer format.',
     'ecs.permissions': 'The Multi-container Docker platform requires additional ECS permissions. Add the permissions to the aws-elasticbeanstalk-ec2-role or use your own instance profile by typing "-ip {profile-name}".\n'
                        'For more information see: https://docs.aws.amazon.com/elasticbeanstalk/latest/dg/create_deploy_docker_ecstutorial.html#create_deploy_docker_ecstutorial_role',
+    'create.servicerole.info': '2.0+ Platforms require a service role. We will attempt to create one for you. You can specify your own role using the --service-role option.',
+    'create.servicerole.view': 'Type "view" to see the policy, or just press ENTER to continue',
+    'create.servicerole.required': '2.0+ Platforms require a service role. You can provide one with --service-role option',
+    'create.servicerole.nopermissions': 'No permissions to create a role. '
+                                        'Create an IAM role called "{}" with appropriate permissions to continue, or specify a role with --service-role.\n'
+                                        'See http://aws.amazon.com/somesite for more info. \nActual error: {}',
+    'general.pressenter': 'Press enter to continue',
 }
 
 alerts = {
@@ -270,6 +291,7 @@ flag_text = {
     'create.sample': 'use Sample Application',
     'create.default': 'set as branches default environment',
     'create.iprofile': 'EC2 Instance profile',
+    'create.servicerole': 'Service Role',
     'create.version': 'version label to deploy',
     'create.keyname': 'EC2 SSH KeyPair name',
     'create.scale': 'number of desired instances',
@@ -297,6 +319,9 @@ flag_text = {
     'init.keyname': 'default EC2 key name',
     'init.interactive': 'force interactive mode',
 
+    # labs
+    'labs.cwl.remove': 'remove .ebextensions',
+
     # List
     'list.all': 'show environments for all applications',
 
@@ -310,6 +335,7 @@ flag_text = {
     'logs.all': 'retrieve all logs',
     'logs.zip': 'retrieve all logs as .zip',
     'logs.instance': 'instance id',
+    'logs.stream': 'stream deployment logs that were set up with cloudwatch',
 
     # Scale
     'scale.number': 'number of desired instances',
@@ -355,10 +381,12 @@ responses = {
                        'but with errors',
     'event.failedlaunch': 'Failed to launch environment.',
     'event.faileddeploy': 'Failed to deploy application.',
+    'event.failedupdate': 'Failed to deploy configuration.',
     'event.updatebad': 'Update environment operation is complete, but with errors.',
     'event.updatefailed': 'Failed to deploy configuration.',
     'git.norepository': 'Error: Not a git repository '
                         '(or any of the parent directories): .git',
+    'health.nodescribehealth': 'DescribeEnvironmentHealth is not supported.',
     'env.updatesuccess': 'Environment update completed successfully.',
     'env.configsuccess': 'Successfully deployed new configuration to environment.',
     'env.cnamenotavailable': 'DNS name \([^ ]+\) is not available.',

@@ -13,10 +13,13 @@
 
 import os
 import re
+import pkg_resources
 import sys
 from datetime import datetime
+import warnings
 
 from dateutil import tz
+
 from botocore.compat import six
 from cement.utils.misc import minimal_logger
 from subprocess import Popen, PIPE, STDOUT
@@ -133,8 +136,13 @@ def get_delta_from_now_and_datetime(date):
 def get_local_time(utctime):
     from_zone = tz.tzutc()
     to_zone = tz.tzlocal()
-    utctime.replace(tzinfo=from_zone)
+    utctime = utctime.replace(tzinfo=from_zone)
     return utctime.astimezone(to_zone)
+
+
+def get_local_time_as_string(utctime):
+    localtime = get_local_time(utctime)
+    return localtime.strftime("%Y-%m-%d %H:%M:%S")
 
 
 def is_ssh():
@@ -228,6 +236,15 @@ def get_data_from_url(url, timeout=20):
 def print_from_url(url):
     result = get_data_from_url(url)
     io.echo(result)
+
+
+def parse_version(version_string):
+    """
+    Parse string as a verison object for comparison
+    Example: parse_version('1.9.2') > parse_version('1.9.alpha')
+    See docs for pkg_resource.parse_version as this is just a wrapper
+    """
+    return pkg_resources.parse_version(version_string)
 
 
 def save_file_from_url(url, location, filename):

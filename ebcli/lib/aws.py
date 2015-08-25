@@ -14,10 +14,12 @@
 import time
 import random
 import warnings
+import os
 
 import botocore
 import botocore.session
 import botocore.exceptions
+from botocore.loaders import Loader
 from cement.utils.misc import minimal_logger
 
 from ebcli import __version__
@@ -28,6 +30,8 @@ from .utils import static_var
 from .botopatch import apply_patches
 
 LOG = minimal_logger(__name__)
+
+BOTOCORE_DATA_FOLDER_NAME = 'botocoredata'
 
 _api_clients = {}
 _profile = None
@@ -76,6 +80,10 @@ def set_region(region_name):
     global _region_name
     _region_name = region_name
 
+    # Invalidate session and old clients
+    _get_botocore_session.botocore_session = None
+    _api_clients = {}
+
 
 def set_endpoint_url(endpoint_url):
     global _endpoint_url
@@ -102,6 +110,14 @@ def _set_user_agent_for_session(session):
     session.user_agent_name = 'eb-cli'
     session.user_agent_version = __version__
 
+def _get_data_loader():
+    # Creates a botocore data loader that loads custom data files
+    # FIRST, creating a precedence for custom files.
+    data_folder = os.path.join(os.path.dirname(os.path.realpath(__file__)),
+                               BOTOCORE_DATA_FOLDER_NAME)
+
+    return Loader(extra_search_paths=[data_folder, Loader.BUILTIN_DATA_PATH],
+                  include_default_search_paths=False)
 
 def _get_client(service_name):
     aws_access_key_id = _id
@@ -118,7 +134,7 @@ def _get_client(service_name):
         LOG.debug('Creating new Botocore Client for ' + str(service_name))
         client = session.create_client(service_name,
                                        endpoint_url=endpoint_url,
-                                       region_name=_region_name,
+                                       # region_name=_region_name,
                                        aws_access_key_id=aws_access_key_id,
                                        aws_secret_access_key=aws_secret_key,
                                        verify=_verify_ssl)
@@ -136,8 +152,11 @@ def _get_botocore_session():
     if _get_botocore_session.botocore_session is None:
         LOG.debug('Creating new Botocore Session')
         LOG.debug('Botocore version: {0}'.format(botocore.__version__))
-        session = botocore.session.Session(session_vars={
-            'profile': (None, _profile_env_var, _profile)})
+        session = botocore.session.get_session({
+            'profile': (None, _profile_env_var, _profile, None),
+        })
+        session.set_config_variable('region', _region_name)
+        session.register_component('data_loader', _get_data_loader())
         _set_user_agent_for_session(session)
         _get_botocore_session.botocore_session = session
         if _debug:
@@ -146,13 +165,8 @@ def _get_botocore_session():
     return _get_botocore_session.botocore_session
 
 
-def get_default_region():
-    client = _get_client('elasticbeanstalk')
-    try:
-        endpoint = client._endpoint
-        return endpoint.region_name
-    except botocore.exceptions.UnknownEndpointError as e:
-        raise NoRegionError(e)
+def get_region_name():
+    return _region_name
 
 
 def make_api_call(service_name, operation_name, **operation_options):
@@ -164,6 +178,8 @@ def make_api_call(service_name, operation_name, **operation_options):
         LOG.debug('Credentials incomplete')
         raise CredentialsError('Your credentials are not complete. Error: {0}'
                                .format(e))
+    except botocore.exceptions.NoRegionError:
+        raise NoRegionError()
 
     if not _verify_ssl:
         warnings.filterwarnings("ignore")
@@ -199,9 +215,13 @@ def make_api_call(service_name, operation_name, **operation_options):
             LOG.debug('Response: ' + str(response_data))
             status = response_data['ResponseMetadata']['HTTPStatusCode']
             LOG.debug('API call finished, status = ' + str(status))
+            try:
+                message = str(response_data['Error']['Message'])
+            except KeyError:
+                message = ""
             if status == 400:
                 # Convert to correct 400 error
-                error = _get_400_error(response_data)
+                error = _get_400_error(response_data, message)
                 if isinstance(error, ThrottlingError):
                     LOG.debug('Received throttling error')
                     if attempt > MAX_ATTEMPTS:
@@ -211,17 +231,15 @@ def make_api_call(service_name, operation_name, **operation_options):
                     raise error
             elif status == 403:
                 LOG.debug('Received a 403')
-                try:
-                    message = str(response_data['Error']['Message'])
-                except KeyError:
+                if not message:
                     message = 'Are your permissions correct?'
                 raise NotAuthorizedError('Operation Denied. ' + message)
             elif status == 404:
                 LOG.debug('Received a 404')
-                raise NotFoundError(response_data['Error']['Message'])
+                raise NotFoundError(message)
             elif status == 409:
                 LOG.debug('Received a 409')
-                raise AlreadyExistsError(response_data['Error']['Message'])
+                raise AlreadyExistsError(message)
             elif status in (500, 503, 504):
                 LOG.debug('Received 5XX error')
                 if attempt > MAX_ATTEMPTS:
@@ -266,15 +284,17 @@ def _get_delay(attempt_number):
     return delay
 
 
-def _get_400_error(response_data):
+def _get_400_error(response_data, message):
     code = response_data['Error']['Code']
-    message = response_data['Error']['Message']
+    LOG.debug('Received a 400 Error')
     if code == 'InvalidParameterValue':
         return InvalidParameterValueError(message)
     elif code == 'InvalidQueryParameter':
         return InvalidQueryParameterError(message)
-    elif code == 'Throttling':
+    elif code.startswith('Throttling'):
         return ThrottlingError(message)
+    elif code.startswith('ResourceNotFound'):
+        return NotFoundError(message)
     else:
         # Not tracking this error
         return ServiceError(message, code=code)
