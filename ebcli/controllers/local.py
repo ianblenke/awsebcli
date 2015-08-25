@@ -13,9 +13,8 @@
 
 from ..core import io
 from ..core.abstractcontroller import AbstractBaseController
-from ..docker import container_factory as factory
-from ..docker import log, compat
-from ..docker.container_viewmodel import ContainerViewModel
+from ..containers import factory, log, compat
+from ..containers.container_viewmodel import ContainerViewModel
 from ..operations import localops
 from ..resources.strings import strings, flag_text
 
@@ -35,16 +34,21 @@ class LocalController(AbstractBaseController):
     def _add_to_handler(cls, handler):
         handler.register(cls)
         # Register child controllers
-        handler.register(LocalLogsController)
-        handler.register(LocalRunController)
-        handler.register(LocalOpenController)
-        handler.register(LocalStatusController)
+        for child_controller in cls._get_child_controllers():
+            handler.register(child_controller)
 
+    @staticmethod
+    def _get_child_controllers():
+        return [LocalLogsController, LocalOpenController,
+                LocalPrintEnvController, LocalRunController,
+                LocalSetEnvController, LocalStatusController]
 
     def complete_command(self, commands):
         if len(commands) == 1:
-            io.echo('logs', 'open', 'run', 'status')
-
+            aliases = [c.Meta.aliases[0] for c in self._get_child_controllers()]
+            io.echo(*aliases)
+        else: # Need to pass to next controller
+            pass
 
 
 class LocalRunController(AbstractBaseController):
@@ -118,3 +122,37 @@ class LocalStatusController(AbstractBaseController):
         cnt = factory.make_container()
         cnt_viewmodel = ContainerViewModel.from_container(cnt)
         localops.print_container_details(cnt_viewmodel)
+
+
+class LocalSetEnvController(AbstractBaseController):
+    class Meta:
+        label = 'local_setenv'
+        description = strings['local.setenv.info']
+        aliases = ['setenv']
+        aliases_only = True
+        stacked_on = 'local'
+        stacked_type = 'nested'
+        usage = 'eb local setenv [VAR_NAME=KEY ...] [options ...]'
+        arguments = [
+            (['varKey'], dict(action='store', nargs='+',
+                              default=[], help=flag_text['local.setenv.vars']))
+        ]
+        epilog = strings['local.setenv.epilog']
+
+    def do_command(self):
+        localops.setenv(self.app.pargs.varKey)
+
+
+class LocalPrintEnvController(AbstractBaseController):
+    class Meta:
+        label = 'local_printenv'
+        description = strings['local.printenv.info']
+        aliases = ['printenv']
+        aliases_only = True
+        stacked_on = 'local'
+        stacked_type = 'nested'
+        usage = 'eb local printenv [options ...]'
+        arguments = []
+
+    def do_command(self):
+        localops.get_and_print_environment_vars()

@@ -26,4 +26,4 @@ class PrintEnvController(AbstractBaseController):
         app_name = self.get_app_name()
         env_name = self.get_env_name()
 
-        envvarops.print_environment_vars(app_name, env_name)
+        envvarops.get_and_print_environment_vars(app_name, env_name)

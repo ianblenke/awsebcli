@@ -68,10 +68,13 @@ strings = {
     'ssh.info': 'Opens the SSH client to connect to an instance.',
     'printenv.info': 'Shows the environment variables.',
     'local.info': 'Runs commands on your local machine.',
+    'local.printenv.info': 'Shows local environment variables.',
     'local.run.info': 'Runs the Docker container on your local machine.',
+    'local.setenv.info': 'Sets local environment variables.',
     'local.logs.info': 'Prints where logs are locally saved.',
     'local.open.info': 'Opens the application URL in a browser.',
     'local.status.info': 'Gets container information and status.',
+    'local.setenv.epilog': 'Use this command to set environment variables by typing a space-separated list of key=value pairs.',
     # Error when --sample and --label flag are both used on create
     'create.sampleandlabel': 'You cannot use the "--sample" and "--version" options together.',
     'create.singleandsize': 'You cannot use the "--single" and "--scale" options together.',
@@ -113,8 +116,9 @@ strings = {
     'ssh.filenotfound': 'The EB CLI cannot find your SSH key file for keyname "{key-name}".'
                         ' Your SSH key file must be located in the .ssh folder in your home directory.',
     'logs.location': 'Logs were saved to {location}',
-    'local.logs.location': 'Elastic Beanstalk will write logs locally to {}',
-    'local.logs.lastlocation': 'Logs were most recently created {} and written to {}',
+    'local.logs.location': 'Elastic Beanstalk will write logs locally to {location}',
+    'local.logs.lastlocation': 'Logs were most recently created {prettydate} and written to {location}',
+    'local.logs.symlink': 'Updated symlink at {symlink}',
     'local.logs.nologs': 'There are currently no local logs.',
     'setenv.invalidformat': 'You must use the format VAR_NAME=KEY to set an environment variable. Variables and keys '
                             'cannot contain any spaces or =. They must start'
@@ -143,7 +147,7 @@ strings = {
     'events.abortmessage': ' Use "eb abort" to cancel the command.',
     'abort.noabortableenvs': 'There are no environments currently being updated.',
     'local.unsupported': 'You can use "eb local" only with preconfigured, generic and multicontainer Docker platforms.',
-    'local.dockernotpresent': 'You must install Docker version {} to continue. If you are using Mac OS X, ensure you have boot2docker version {}. Currently, "eb local" does not support Windows.',
+    'local.dockernotpresent': 'You must install Docker version {docker-version} to continue. If you are using Mac OS X, ensure you have boot2docker version {boot2docker-version}. Currently, "eb local" does not support Windows.',
     'local.filenotfound': 'The EB CLI cannot find Dockerfile or the Dockerrun.aws.json file in the application root directory.',
     'local.missingdockerrun': 'This environment requires a Dockerrun.aws.json file to run.',
     'local.invaliddockerrunversion': 'The AWSEBDockerrunVersion key in the Dockerrun.aws.json file is not valid or is not included.',
@@ -280,6 +284,7 @@ flag_text = {
     'deploy.label': 'label name which version will be given',
     'deploy.message': 'description for version',
     'deploy.nohang': 'return immediately, do not wait for deploy to be completed',
+    'deploy.staged': 'deploy files staged in git rather than the HEAD commit',
 
     # Events
     'events.follow': 'wait and continue to print events as they come',
@@ -296,6 +301,7 @@ flag_text = {
     # Local
     'local.run.envvars': 'a comma-separated list of environment variables as key=value pairs',
     'local.run.hostport': 'the host port that is exposed and mapped to the container port',
+    'local.setenv.vars': 'space-separated list in format: VAR_NAME=KEY',
     # Logs
     'logs.all': 'retrieve all logs',
     'logs.zip': 'retrieve all logs as .zip',
@@ -306,7 +312,7 @@ flag_text = {
     'scale.force': 'skip confirmation prompt',
 
     # Setenv
-    'setenv.vars': 'space separated list in format: VAR_NAME=KEY',
+    'setenv.vars': 'space-separated list in format: VAR_NAME=KEY',
     'setenv.env': 'environment name',
 
     # SSH
