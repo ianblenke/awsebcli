@@ -1,0 +1,5 @@
+pyyaml==3.11
+six==1.8.0
+cement==2.4
+python-dateutil>=2.2
+jmespath>=0.4.1
