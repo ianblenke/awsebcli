@@ -5,7 +5,8 @@ from setuptools import setup, find_packages
 
 import ebcli
 
-requires = ['pyyaml==3.11',
+requires = ['setuptools>=7.0',
+            'pyyaml>=3.11',
             'six==1.8.0',
             'cement==2.4',
             ## For botocore we need the following
@@ -27,7 +28,7 @@ setup_options = dict(
     name='awsebcli',
     version=ebcli.__version__,
     description='Command Line Interface for AWS EB.',
-    long_description=open('README.rst').read(),
+    long_description=open('README.rst').read() + open('CHANGES.rst').read(),
     scripts=['bin/eb_completion.bash'],
     data_files=data_files,
     author='Nick Humrich',

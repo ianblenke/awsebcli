@@ -152,12 +152,12 @@ def print_events(app_name, env_name, region, follow):
 
 def get_all_env_names(region):
     envs = elasticbeanstalk.get_all_environments(region=region)
-    return [e.name for e in envs if not e.status == 'Terminated']
+    return [e.name for e in envs]
 
 
 def get_env_names(app_name, region):
     envs = elasticbeanstalk.get_app_environments(app_name, region)
-    return [e.name for e in envs if not e.status == 'Terminated']
+    return [e.name for e in envs]
 
 
 def list_env_names(app_name, region, verbose, all_apps):
@@ -405,7 +405,6 @@ def get_default_role(region):
     return role
 
 
-
 def open_app(app_name, env_name, region):
     # get cname
     env = elasticbeanstalk.get_environment(app_name, env_name, region)
@@ -588,7 +587,12 @@ def create_env(app_name, env_name, region, cname, solution_stack, tier, itype,
                 region=region, database=database, vpc=vpc, size=size)
 
         except InvalidParameterValueError as e:
-            if interactive:
+            if e.message == responses['app.notexists'].replace(
+                '{app-name}', '\'' + app_name + '\''):
+                # App doesnt exist, must be a new region.
+                ## Lets create the app in the region
+                create_app(app_name, region)
+            elif interactive:
                 LOG.debug('creating env returned error: ' + e.message)
                 if re.match(responses['env.cnamenotavailable'], e.message):
                     io.echo(prompts['cname.unavailable'])
@@ -885,7 +889,6 @@ def terminate(env_name, region, nohang=False):
     request_id = elasticbeanstalk.terminate_environment(env_name, region)
 
     # disassociate with branch if branch default
-    ## Get default environment
     default_env = get_current_branch_environment()
     if default_env == env_name:
         set_environment_for_current_branch(None)
@@ -948,17 +951,20 @@ def create_app_version(app_name, region, label=None, message=None):
         return None
 
     source_control = SourceControl.get_source_control()
-    #get version_label
+    # get version_label
     if label:
         version_label = label
     else:
         version_label = source_control.get_version_label()
 
-    #get description
+    # get description
     if message:
         description = message
     else:
         description = source_control.get_message()
+
+    if len(description) > 200:
+        description = description[:195] + '...'
 
     io.log_info('Creating app_version archive "' + version_label + '"')
 
@@ -979,9 +985,13 @@ def create_app_version(app_name, region, label=None, message=None):
     # upload to s3
     key = app_name + '/' + file_name
 
-    io.log_info('Uploading archive to s3 location: ' + key)
-    s3.upload_application_version(bucket, key, file_path,
-                                                region=region)
+    try:
+        s3.get_object_info(bucket, key, region=region)
+        io.log_info('S3 Object already exists. Skipping upload.')
+    except NotFoundError:
+        io.log_info('Uploading archive to s3 location: ' + key)
+        s3.upload_application_version(bucket, key, file_path, region=region)
+
     fileoperations.delete_app_versions()
     io.log_info('Creating AppVersion ' + version_label)
     while True:
@@ -1006,7 +1016,7 @@ def create_app_version(app_name, region, label=None, message=None):
 
 
 def update_environment_configuration(app_name, env_name, region, nohang):
-    #get environment setting
+    # get environment setting
     api_model = elasticbeanstalk.describe_configuration_settings(
         app_name, env_name, region=region
     )

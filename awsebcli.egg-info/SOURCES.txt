@@ -1,4 +1,4 @@
-CHANGES.txt
+CHANGES.rst
 LICENSE.txt
 MANIFEST.in
 README.rst
